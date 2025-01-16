@@ -59,6 +59,8 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
         inference_type: str,
         checkpoint_dir: str,
         checkpoint_name: str,
+        transformer_filename: str,
+        text_encoder_filename: str,
         prompt_upsampler_dir: Optional[str] = None,
         enable_prompt_upsampler: bool = True,
         enable_text_guardrail: bool = True,
@@ -117,6 +119,8 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
             inference_type=inference_type,
             checkpoint_dir=checkpoint_dir,
             checkpoint_name=checkpoint_name,
+            transformer_filename = transformer_filename,
+            text_encoder_filename = text_encoder_filename,
             enable_text_guardrail=enable_text_guardrail,
             enable_video_guardrail=enable_video_guardrail,
             offload_network=offload_network,
@@ -145,7 +149,7 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
         )
 
     def _load_network(self):
-        load_network_model(self.model, f"{self.checkpoint_dir}/{self.checkpoint_name}/model.pt")
+        load_network_model(self.model, f"{self.checkpoint_dir}/transformer/{self.transformer_filename}")
 
     def _load_tokenizer(self):
         load_tokenizer_model(self.model, f"{self.checkpoint_dir}/Cosmos-1.0-Tokenizer-CV8x8x8")
@@ -249,6 +253,7 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
             guidance=self.guidance,
             num_steps=self.num_steps,
             seed=self.seed,
+            callback = self._callback if hasattr(self, "_callback") else None
         )
 
         return sample
@@ -270,11 +275,18 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
         """
         if self.offload_network:
             self._load_network()
+        self.model.tokenizer.video_vae.cpu()
 
-        if self.offload_tokenizer:
-            self._load_tokenizer()
+        # if self.offload_tokenizer: 
+        #     self._load_tokenizer()
 
         sample = self._run_model(prompt_embedding, negative_prompt_embedding)
+        # if True:
+        #     sample = torch.load("lalala.pt", weights_only = True)
+        # else:
+        #     torch.save(sample, "lalala.pt")
+
+        self._offload.unload_all()
 
         if self.offload_network:
             self._offload_network()
@@ -282,7 +294,9 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
         if self.offload_tokenizer:
             self._load_tokenizer()
 
+        self.model.tokenizer.video_vae.cuda() # manual loading / unloading as the vae is not a standard object
         sample = self._run_tokenizer_decoding(sample)
+        self.model.tokenizer.video_vae.cpu()
 
         if self.offload_tokenizer:
             self._offload_tokenizer()
@@ -379,6 +393,9 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
         inference_type: str,
         checkpoint_dir: str,
         checkpoint_name: str,
+        transformer_filename: str,
+        text_encoder_filename: str,
+
         prompt_upsampler_dir: Optional[str] = None,
         enable_prompt_upsampler: bool = True,
         enable_text_guardrail: bool = True,
@@ -426,6 +443,8 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
             inference_type=inference_type,
             checkpoint_dir=checkpoint_dir,
             checkpoint_name=checkpoint_name,
+            transformer_filename = transformer_filename,
+            text_encoder_filename = text_encoder_filename,
             prompt_upsampler_dir=prompt_upsampler_dir,
             enable_prompt_upsampler=enable_prompt_upsampler,
             enable_text_guardrail=enable_text_guardrail,
@@ -514,6 +533,7 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
             seed=self.seed,
             condition_latent=condition_latent,
             num_input_frames=self.num_input_frames,
+            callback = self._callback if hasattr(self, "_callback") else None
         )
 
         return video
@@ -533,6 +553,7 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
             input_image_or_video_path=image_or_video_path,
             num_input_frames=self.num_input_frames,
             state_shape=self.model.state_shape,
+            max_frames = self.max_frames  if  hasattr(self,"max_frames") else -1
         )
 
         return condition_latent
@@ -559,7 +580,11 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
         if self.offload_tokenizer:
             self._load_tokenizer()
 
+
+        self.model.tokenizer.video_vae.cuda() # manual loading / unloading as the vae is not a standard object
         condition_latent = self._run_tokenizer_encoding(image_or_video_path)
+        self.model.tokenizer.video_vae.cpu()
+        torch.cuda.empty_cache()
 
         if self.offload_network:
             self._load_network()
@@ -569,7 +594,10 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
         if self.offload_network:
             self._offload_network()
 
+        self.model.tokenizer.video_vae.cuda() # manual loading / unloading as the vae is not a standard object
         sample = self._run_tokenizer_decoding(sample)
+        self.model.tokenizer.video_vae.cpu()
+        torch.cuda.empty_cache()
 
         if self.offload_tokenizer:
             self._offload_tokenizer()

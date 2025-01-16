@@ -195,7 +195,7 @@ class JITVAE(BasePretrainedImageVAE):
         """
         Load the encoder from the remote store.
         """
-        self.encoder = torch.load(os.path.join(vae_dir, "encoder.jit"), weights_only=True)
+        self.encoder = torch.jit.load(os.path.join(vae_dir, "encoder.jit"))
 
         self.encoder.eval()
         for param in self.encoder.parameters():
@@ -206,7 +206,7 @@ class JITVAE(BasePretrainedImageVAE):
         """
         Load the decoder from the remote store.
         """
-        self.decoder = torch.load(os.path.join(vae_dir, "decoder.jit"), weights_only=True)
+        self.decoder = torch.jit.load(os.path.join(vae_dir, "decoder.jit"))
 
         self.decoder.eval()
         for param in self.decoder.parameters():

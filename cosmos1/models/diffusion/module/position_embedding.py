@@ -13,27 +13,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
+####################### Thanks to ComfyUI for the transformer_engine replacement code ###############################
+#  https://github.com/comfyanonymous/ComfyUI/
+
+from typing import List, Optional
 
 import torch
 from einops import rearrange, repeat
 from torch import nn
+import math
+from mmgp import offload
 
-from cosmos1.models.diffusion.module.attention import normalize
-from cosmos1.models.diffusion.module.timm import trunc_normal_
+use_TE = offload.shared_state.get("TE", False)
+if use_TE:
+    from cosmos1.models.diffusion.module.attention import normalize
+    from cosmos1.models.diffusion.module.timm import trunc_normal_  
+else:
+    def normalize(x: torch.Tensor, dim: Optional[List[int]] = None, eps: float = 0) -> torch.Tensor:
+        """
+        Normalizes the input tensor along specified dimensions such that the average square norm of elements is adjusted.
+
+        Args:
+            x (torch.Tensor): The input tensor to normalize.
+            dim (list, optional): The dimensions over which to normalize. If None, normalizes over all dimensions except the first.
+            eps (float, optional): A small constant to ensure numerical stability during division.
+
+        Returns:
+            torch.Tensor: The normalized tensor.
+        """
+        if dim is None:
+            dim = list(range(1, x.ndim))
+        norm = torch.linalg.vector_norm(x, dim=dim, keepdim=True, dtype=torch.float32)
+        norm = torch.add(eps, norm, alpha=math.sqrt(norm.numel() / x.numel()))
+        return x / norm.to(x.dtype)
 
 
 class VideoPositionEmb(nn.Module):
-    def forward(self, x_B_T_H_W_C: torch.Tensor, fps=Optional[torch.Tensor]) -> torch.Tensor:
+    def forward(self, x_B_T_H_W_C: torch.Tensor, fps=Optional[torch.Tensor], device=None) -> torch.Tensor:
         """
         It delegates the embedding generation to generate_embeddings function.
         """
         B_T_H_W_C = x_B_T_H_W_C.shape
-        embeddings = self.generate_embeddings(B_T_H_W_C, fps=fps)
+        embeddings = self.generate_embeddings(B_T_H_W_C, fps=fps, device=device)
 
         return embeddings
 
-    def generate_embeddings(self, B_T_H_W_C: torch.Size, fps=Optional[torch.Tensor]):
+    def generate_embeddings(self, B_T_H_W_C: torch.Size, fps=Optional[torch.Tensor], device=None):
         raise NotImplementedError
 
 
@@ -49,11 +74,12 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         h_extrapolation_ratio: float = 1.0,
         w_extrapolation_ratio: float = 1.0,
         t_extrapolation_ratio: float = 1.0,
+        device=None,
         **kwargs,  # used for compatibility with other positional embeddings; unused in this class
     ):
         del kwargs
         super().__init__()
-        self.register_buffer("seq", torch.arange(max(len_h, len_w, len_t), dtype=torch.float))
+        self.register_buffer("seq", torch.arange(max(len_h, len_w, len_t), dtype=torch.float, device=device))
         self.base_fps = base_fps
         self.max_h = len_h
         self.max_w = len_w
@@ -65,12 +91,12 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         assert dim == dim_h + dim_w + dim_t, f"bad dim: {dim} != {dim_h} + {dim_w} + {dim_t}"
         self.register_buffer(
             "dim_spatial_range",
-            torch.arange(0, dim_h, 2)[: (dim_h // 2)].float().cuda() / dim_h,
+            torch.arange(0, dim_h, 2, device=device)[: (dim_h // 2)].float() / dim_h,
             persistent=False,
         )
         self.register_buffer(
             "dim_temporal_range",
-            torch.arange(0, dim_t, 2)[: (dim_t // 2)].float().cuda() / dim_t,
+            torch.arange(0, dim_t, 2, device=device)[: (dim_t // 2)].float() / dim_t,
             persistent=False,
         )
 
@@ -85,6 +111,7 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         h_ntk_factor: Optional[float] = None,
         w_ntk_factor: Optional[float] = None,
         t_ntk_factor: Optional[float] = None,
+        device=None,
     ):
         """
         Generate embeddings for the given input size.
@@ -107,39 +134,61 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         w_theta = 10000.0 * w_ntk_factor
         t_theta = 10000.0 * t_ntk_factor
 
-        h_spatial_freqs = 1.0 / (h_theta**self.dim_spatial_range)
-        w_spatial_freqs = 1.0 / (w_theta**self.dim_spatial_range)
-        temporal_freqs = 1.0 / (t_theta**self.dim_temporal_range)
+        h_spatial_freqs = 1.0 / (h_theta**self.dim_spatial_range.to(device=device))
+        w_spatial_freqs = 1.0 / (w_theta**self.dim_spatial_range.to(device=device))
+        temporal_freqs = 1.0 / (t_theta**self.dim_temporal_range.to(device=device))
 
         B, T, H, W, _ = B_T_H_W_C
-        uniform_fps = (fps is None) or (fps.min() == fps.max())
+        uniform_fps = (fps is None) or isinstance(fps, (int, float)) or (fps.min() == fps.max())
         assert (
             uniform_fps or B == 1 or T == 1
         ), "For video batch, batch size should be 1 for non-uniform fps. For image batch, T should be 1"
         assert (
             H <= self.max_h and W <= self.max_w
         ), f"Input dimensions (H={H}, W={W}) exceed the maximum dimensions (max_h={self.max_h}, max_w={self.max_w})"
-        half_emb_h = torch.outer(self.seq[:H], h_spatial_freqs)
-        half_emb_w = torch.outer(self.seq[:W], w_spatial_freqs)
+        half_emb_h = torch.outer(self.seq[:H].to(device=device), h_spatial_freqs)
+        half_emb_w = torch.outer(self.seq[:W].to(device=device), w_spatial_freqs)
 
-        # apply sequence scaling in temporal dimension
-        if fps is None:  # image case
-            assert T == 1, "T should be 1 for image batch."
-            half_emb_t = torch.outer(self.seq[:T], temporal_freqs)
+        if use_TE:
+            # apply sequence scaling in temporal dimension
+            if fps is None:  # image case
+                assert T == 1, "T should be 1 for image batch."
+                half_emb_t = torch.outer(self.seq[:T], temporal_freqs)
+            else:
+                half_emb_t = torch.outer(self.seq[:T] / fps[:1] * self.base_fps, temporal_freqs)
+
+            em_T_H_W_D = torch.cat(
+                [
+                    repeat(half_emb_t, "t d -> t h w d", h=H, w=W),
+                    repeat(half_emb_h, "h d -> t h w d", t=T, w=W),
+                    repeat(half_emb_w, "w d -> t h w d", t=T, h=H),
+                ]
+                * 2,
+                dim=-1,
+            )
+
+            return rearrange(em_T_H_W_D, "t h w d -> (t h w) 1 1 d").float()
         else:
-            half_emb_t = torch.outer(self.seq[:T] / fps[:1] * self.base_fps, temporal_freqs)
+            # apply sequence scaling in temporal dimension
+            if fps is None:  # image case
+                half_emb_t = torch.outer(self.seq[:T].to(device=device), temporal_freqs)
+            else:
+                half_emb_t = torch.outer(self.seq[:T].to(device=device) / fps * self.base_fps, temporal_freqs)
 
-        em_T_H_W_D = torch.cat(
-            [
-                repeat(half_emb_t, "t d -> t h w d", h=H, w=W),
-                repeat(half_emb_h, "h d -> t h w d", t=T, w=W),
-                repeat(half_emb_w, "w d -> t h w d", t=T, h=H),
-            ]
-            * 2,
-            dim=-1,
-        )
+            half_emb_h = torch.stack([torch.cos(half_emb_h), -torch.sin(half_emb_h), torch.sin(half_emb_h), torch.cos(half_emb_h)], dim=-1)
+            half_emb_w = torch.stack([torch.cos(half_emb_w), -torch.sin(half_emb_w), torch.sin(half_emb_w), torch.cos(half_emb_w)], dim=-1)
+            half_emb_t = torch.stack([torch.cos(half_emb_t), -torch.sin(half_emb_t), torch.sin(half_emb_t), torch.cos(half_emb_t)], dim=-1)
 
-        return rearrange(em_T_H_W_D, "t h w d -> (t h w) 1 1 d").float()
+            em_T_H_W_D = torch.cat(
+                [
+                    repeat(half_emb_t, "t d x -> t h w d x", h=H, w=W),
+                    repeat(half_emb_h, "h d x -> t h w d x", t=T, w=W),
+                    repeat(half_emb_w, "w d x -> t h w d x", t=T, h=H),
+                ]
+                , dim=-2,
+            )
+
+            return rearrange(em_T_H_W_D, "t h w d (i j) -> (t h w) d i j", i=2, j=2).float()
 
 
 class LearnablePosEmbAxis(VideoPositionEmb):
@@ -151,6 +200,7 @@ class LearnablePosEmbAxis(VideoPositionEmb):
         len_h: int,
         len_w: int,
         len_t: int,
+        device=None,
         **kwargs,
     ):
         """
@@ -162,20 +212,20 @@ class LearnablePosEmbAxis(VideoPositionEmb):
         self.interpolation = interpolation
         assert self.interpolation in ["crop"], f"Unknown interpolation method {self.interpolation}"
 
-        self.pos_emb_h = nn.Parameter(torch.zeros(len_h, model_channels))
-        self.pos_emb_w = nn.Parameter(torch.zeros(len_w, model_channels))
-        self.pos_emb_t = nn.Parameter(torch.zeros(len_t, model_channels))
+        self.pos_emb_h = nn.Parameter(torch.empty(len_h, model_channels, device=device))
+        self.pos_emb_w = nn.Parameter(torch.empty(len_w, model_channels, device=device))
+        self.pos_emb_t = nn.Parameter(torch.empty(len_t, model_channels, device=device))
+        if use_TE:
+            trunc_normal_(self.pos_emb_h, std=0.02)
+            trunc_normal_(self.pos_emb_w, std=0.02)
+            trunc_normal_(self.pos_emb_t, std=0.02)
 
-        trunc_normal_(self.pos_emb_h, std=0.02)
-        trunc_normal_(self.pos_emb_w, std=0.02)
-        trunc_normal_(self.pos_emb_t, std=0.02)
-
-    def generate_embeddings(self, B_T_H_W_C: torch.Size, fps=Optional[torch.Tensor]) -> torch.Tensor:
+    def generate_embeddings(self, B_T_H_W_C: torch.Size, fps=Optional[torch.Tensor], device=None) -> torch.Tensor:
         B, T, H, W, _ = B_T_H_W_C
         if self.interpolation == "crop":
-            emb_h_H = self.pos_emb_h[:H]
-            emb_w_W = self.pos_emb_w[:W]
-            emb_t_T = self.pos_emb_t[:T]
+            emb_h_H = self.pos_emb_h[:H].to(device=device)
+            emb_w_W = self.pos_emb_w[:W].to(device=device)
+            emb_t_T = self.pos_emb_t[:T].to(device=device)
             emb = (
                 repeat(emb_t_T, "t d-> b t h w d", b=B, h=H, w=W)
                 + repeat(emb_h_H, "h d-> b t h w d", b=B, t=T, w=W)

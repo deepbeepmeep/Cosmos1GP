@@ -131,6 +131,7 @@ cfg = args
 
 misc.set_random_seed(cfg.seed)
 video2world = args.video2world
+video2world = True
 
 if video2world:
     inference_type = "video2world"

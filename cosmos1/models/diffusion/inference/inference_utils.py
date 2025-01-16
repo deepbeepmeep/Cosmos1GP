@@ -23,12 +23,14 @@ import imageio
 import numpy as np
 import torch
 import torchvision.transforms.functional as transforms_F
+from mmgp import offload
 
 from cosmos1.models.diffusion.model.model_t2w import DiffusionT2WModel
 from cosmos1.models.diffusion.model.model_v2w import DiffusionV2WModel
 from cosmos1.utils import log, misc
 from cosmos1.utils.config_helper import get_config_module, override
 from cosmos1.utils.io import load_from_fileobj
+from accelerate import init_empty_weights
 
 TORCH_VERSION: Tuple[int, ...] = tuple(int(x) for x in torch.__version__.split(".")[:2])
 if TORCH_VERSION >= (1, 11):
@@ -156,12 +158,12 @@ def validate_args(args: argparse.Namespace, inference_type: str) -> None:
     ], "Invalid inference_type, must be 'text2world' or 'video2world'"
 
     # Validate prompt/image/video args for single or batch generation
-    if inference_type == "text2world" or (inference_type == "video2world" and args.disable_prompt_upsampler):
-        assert args.prompt or args.batch_input_path, "--prompt or --batch_input_path must be provided."
-    if inference_type == "video2world" and not args.batch_input_path:
-        assert (
-            args.input_image_or_video_path
-        ), "--input_image_or_video_path must be provided for single video generation."
+    # if inference_type == "text2world" or (inference_type == "video2world" and args.disable_prompt_upsampler):
+    #     assert args.prompt or args.batch_input_path, "--prompt or --batch_input_path must be provided."
+    # if inference_type == "video2world" and not args.batch_input_path:
+    #     assert (
+    #         args.input_image_or_video_path
+    #     ), "--input_image_or_video_path must be provided for single video generation."
 
 
 class _IncompatibleKeys(
@@ -244,7 +246,7 @@ def non_strict_load_model(model: torch.nn.Module, checkpoint_state_dict: dict) -
 
                 incorrect_shapes.append((k, shape_checkpoint, shape_model))
                 checkpoint_state_dict.pop(k)
-    incompatible = model.load_state_dict(checkpoint_state_dict, strict=False)
+    incompatible = model.load_state_dict(checkpoint_state_dict, strict=False, assign= True)
     # Remove keys with "_extra_state" suffix, which are non-parameter items introduced by TransformerEngine for FP8 handling
     missing_keys = [k for k in incompatible.missing_keys if "_extra_state" not in k]
     unexpected_keys = [k for k in incompatible.unexpected_keys if "_extra_state" not in k]
@@ -289,17 +291,24 @@ def load_model_by_config(
 
 
 def load_network_model(model: DiffusionT2WModel, ckpt_path: str):
-    with skip_init_linear():
+    with skip_init_linear(),  init_empty_weights():
         model.set_up_model()
-    net_state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=True)
-    log.debug(non_strict_load_model(model.model, net_state_dict))
-    model.cuda()
+    # net_state_dict = torch.load("checkpoints/Cosmos-1.0-Diffusion-14B-Video2World/model.pt", map_location="cpu", weights_only=True)
+    # log.debug(non_strict_load_model(model.model, net_state_dict))
+    # offload.save_model(model.model, "cosmo1_14B_video2world.safetensors")
+    # offload.save_model(model.model, "cosmo1_14B_video2world_quanto_int8.safetensors", do_quantize = True)
+
+
+
+    offload.load_model_data(model.model, ckpt_path)
+
+    # model.cuda()
 
 
 def load_tokenizer_model(model: DiffusionT2WModel, tokenizer_dir: str):
     with skip_init_linear():
         model.set_up_tokenizer(tokenizer_dir)
-    model.cuda()
+    # model.cuda()
 
 
 def prepare_data_batch(
@@ -397,6 +406,7 @@ def generate_world_from_text(
     guidance: float,
     num_steps: int,
     seed: int,
+    callback: None
 ):
     """Generate video from text prompt using diffusion model.
 
@@ -427,6 +437,8 @@ def generate_world_from_text(
         * model.sde.sigma_max
     )
 
+    if callback != None:
+        callback(i_th = -1)
     # Generate video
     sample = model.generate_samples_from_batch(
         data_batch,
@@ -436,6 +448,7 @@ def generate_world_from_text(
         is_negative_prompt=is_negative_prompt,
         seed=seed,
         x_sigma_max=x_sigma_max,
+        callback = callback
     )
 
     return sample
@@ -451,6 +464,7 @@ def generate_world_from_video(
     seed: int,
     condition_latent: torch.Tensor,
     num_input_frames: int,
+    callback: None,
 ) -> Tuple[np.array, list, list]:
     """Generate video using a conditioning video/image input.
 
@@ -493,6 +507,9 @@ def generate_world_from_video(
         * model.sde.sigma_max
     )
 
+    if callback != None:
+        callback(i_th = -1)
+
     sample = model.generate_samples_from_batch(
         data_batch,
         guidance=guidance,
@@ -504,6 +521,7 @@ def generate_world_from_video(
         num_condition_t=num_of_latent_condition,
         condition_video_augment_sigma_in_inference=augment_sigma,
         x_sigma_max=x_sigma_max,
+        callback = callback,
     )
     return sample
 
@@ -659,6 +677,7 @@ def get_condition_latent(
     input_image_or_video_path: str,
     num_input_frames: int = 1,
     state_shape: list[int] = None,
+    max_frames = -1
 ):
     """Get condition latent from input image/video file.
 
@@ -687,6 +706,7 @@ def get_condition_latent(
         input_path_format=input_path_format,
         H=H,
         W=W,
+        max_frames=max_frames 
     )
 
     condition_latent, _ = create_condition_latent_from_input_frames(model, input_frames, num_input_frames)

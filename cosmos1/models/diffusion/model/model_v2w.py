@@ -172,6 +172,7 @@ class DiffusionV2WModel(DiffusionT2WModel):
         condition_video_augment_sigma_in_inference: float = None,
         add_input_frames_guidance: bool = False,
         x_sigma_max: Optional[torch.Tensor] = None,
+        callback = None,
     ) -> Tensor:
         """Generates video samples conditioned on input frames.
 
@@ -223,7 +224,7 @@ class DiffusionV2WModel(DiffusionT2WModel):
                 * self.sde.sigma_max
             )
 
-        samples = self.sampler(x0_fn, x_sigma_max, num_steps=num_steps, sigma_max=self.sde.sigma_max)
+        samples = self.sampler(x0_fn, x_sigma_max, num_steps=num_steps, sigma_max=self.sde.sigma_max, callback_fns =  None if callback is None else [callback])
         return samples
 
     def get_x0_fn_from_batch_with_condition_latent(

@@ -11,54 +11,63 @@
 
 Details of the platform is described in the [Cosmos paper](https://research.nvidia.com/publication/2025-01_cosmos-world-foundation-model-platform-physical-ai). Preview access is avaiable at [build.nvidia.com](https://build.nvidia.com).
 
-## Key Features
 
+<<<<<<< HEAD
 - [Pre-trained Diffusion-based world foundation models](cosmos1/models/diffusion/README.md) for Text2World and Video2World generation where a user can generate visual simulation based on text prompts and video prompts.
 - [Pre-trained Autoregressive-based world foundation models](cosmos1/models/autoregressive/README.md) for Video2World generation where a user can generate visual simulation based on video prompts and optional text prompts.
 - [Video tokenizers](https://github.com/NVIDIA/Cosmos-Tokenizer) for tokenizing videos into continuous tokens (latent vectors) and discrete tokens (integers) efficiently and effectively.
 - Video curation pipeline for building your own video dataset. [Coming soon]
 - [Post-training scripts](cosmos1/models/POST_TRAINING.md) via NeMo Framework to post-train the pre-trained world foundation models for various Physical AI setup.
 - Pre-training scripts via NeMo Framework for building your own world foundation model. [[Diffusion](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/diffusion)] [[Autoregressive](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/multimodal_autoregressive)] [[Tokenizer](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/diffusion/vae)].
+=======
+# Cosmos1 (Text2World and Image2World): GPU Poor version by **DeepBeepMeep**
+01/15/2024: Version 1.0 First release
+>>>>>>> 781c3f1 (First Release)
 
-## Model Family
+This version offers the following improvements :
+- Reduced greatly the RAM requirements and VRAM requirements
+- Much faster on low end configs thanks to compilation and fast loading / unloading
+- Support for 8 bits quantization ( int8 quantized models provided)
+- 5 profiles in order to able to run the model at a decent speed on a low end consumer config (32 GB of RAM and 12 VRAM) and to run it at a very good speed on a high end consumer config (48 GB of RAM and 24 GB of VRAM)
+- Autodownloading of the needed model files (quantized and non quantized models)
+- Improved gradio interface with progression bar 
+- Multiples prompts / multiple generations per prompt
+- Much simpler installation for non Transformer Engine
 
-| Model name | Description | Try it out |
-|------------|----------|----------|
-| [Cosmos-1.0-Diffusion-7B-Text2World](https://huggingface.co/nvidia/Cosmos-1.0-Diffusion-7B-Text2World) | Text to visual world generation  | [Inference](cosmos1/models/diffusion/README.md)   |
-| [Cosmos-1.0-Diffusion-14B-Text2World](https://huggingface.co/nvidia/Cosmos-1.0-Diffusion-14B-Text2World) | Text to visual world generation  | [Inference](cosmos1/models/diffusion/README.md)   |
-| [Cosmos-1.0-Diffusion-7B-Video2World](https://huggingface.co/nvidia/Cosmos-1.0-Diffusion-7B-Video2World) | Video + Text based future visual world generation  | [Inference](cosmos1/models/diffusion/README.md)   |
-| [Cosmos-1.0-Diffusion-14B-Video2World](https://huggingface.co/nvidia/Cosmos-1.0-Diffusion-14B-Video2World) | Video + Text based future visual world generation  | [Inference](cosmos1/models/diffusion/README.md)   |
-| [Cosmos-1.0-Autoregressive-4B](https://huggingface.co/nvidia/Cosmos-1.0-Autoregressive-4B) | Future visual world generation  | [Inference](cosmos1/models/autoregressive/README.md)   |
-| [Cosmos-1.0-Autoregressive-12B](https://huggingface.co/nvidia/Cosmos-1.0-Autoregressive-12B) | Future visual world generation  | [Inference](cosmos1/models/autoregressive/README.md)   |
-| [Cosmos-1.0-Autoregressive-5B-Video2World](https://huggingface.co/nvidia/Cosmos-1.0-Autoregressive-5B-Video2World) | Video + Text based future visual world generation | [Inference](cosmos1/models/autoregressive/README.md)   |
-| [Cosmos-1.0-Autoregressive-13B-Video2World](https://huggingface.co/nvidia/Cosmos-1.0-Autoregressive-13B-Video2World) | Video + Text based future visual world generation | [Inference](cosmos1/models/autoregressive/README.md)   |
-| [Cosmos-1.0-Guardrail](https://huggingface.co/nvidia/Cosmos-1.0-Guardrail) | Guardrail contains pre-Guard and post-Guard for safe use | Embedded in model inference scripts |
+You can use this application to generate a video based on a prompt (text2world) or a video based on a prompt and an image or another video for continuation (video2world). 
 
-## Example Usage
+This fork of Nvidia Cosmos1 made by DeepBeepMeep is an integration of the mmpg module on the gradio_server.py.
 
-### Inference
+It is an illustration on how one can set up on an existing model some fast and properly working CPU offloading with changing only a few lines of code in the core model.
 
-Follow the [Cosmos Installation Guide](INSTALL.md) to setup the docker. For inference with the pretrained models, please refer to [Cosmos Diffusion Inference](cosmos1/models/diffusion/README.md) and [Cosmos Autoregressive Inference](cosmos1/models/autoregressive/README.md).
+For more information on how to use the mmpg module, please go to: https://github.com/deepbeepmeep/mmgp
 
-The code snippet below provides a gist of the inference usage.
 
-```bash
-PROMPT="A sleek, humanoid robot stands in a vast warehouse filled with neatly stacked cardboard boxes on industrial shelves. \
-The robot's metallic body gleams under the bright, even lighting, highlighting its futuristic design and intricate joints. \
-A glowing blue light emanates from its chest, adding a touch of advanced technology. The background is dominated by rows of boxes, \
-suggesting a highly organized storage system. The floor is lined with wooden pallets, enhancing the industrial setting. \
-The camera remains static, capturing the robot's poised stance amidst the orderly environment, with a shallow depth of \
-field that keeps the focus on the robot while subtly blurring the background for a cinematic effect."
+### Installation Guide for Linux and Windows
 
-# Example using 7B model
-PYTHONPATH=$(pwd) python cosmos1/models/diffusion/inference/text2world.py \
-    --checkpoint_dir checkpoints \
-    --diffusion_transformer_dir Cosmos-1.0-Diffusion-7B-Text2World \
-    --prompt "$PROMPT" \
-    --offload_prompt_upsampler \
-    --video_save_name Cosmos-1.0-Diffusion-7B-Text2World
+You will find Docker container on the Cosmos1 homepage, however you will have a hard to make it work on Windows or Windows WSL because this container contains Nvidia Graphics kernel which are not compatible with Windows.\
+It is why I suggest instead to follow these instructions:
+
+
+```shell
+# 1. Install Python 3.10.9
+conda create -n cosmos1 python==3.10.9 
+
+# 2. Install pytorch 2.5.0
+pip install torch==2.5.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/cu124
+
+# 3. Install pip dependencies
+pip install -r requirements.txt
+
+# 4. Optional: Sage attention support (30% faster, easy to install on Linux but much harder on Windows)
+pip install sageattention==1.0.6 
+
+# 5. Optional: Transformer Engine support (builtin compilation and different memory management may be consequently more efficient)
+pip install transformer_engine_torch
+pip install flash-attn==2.6.0.post1
 ```
 
+<<<<<<< HEAD
 <video src="https://github.com/user-attachments/assets/db7bebfe-5314-40a6-b045-4f6ce0a87f2a">
   Your browser does not support the video tag.
 </video>
@@ -68,11 +77,92 @@ We also offer [multi-GPU inference](cosmos1/models/diffusion/nemo/inference/READ
 ### Post-training
 
 NeMo Framework provides GPU accelerated post-training with general post-training for both [diffusion](cosmos1/models/diffusion/nemo/post_training/README.md) and [autoregressive](cosmos1/models/autoregressive/nemo/post_training/README.md) models, with other types of post-training coming soon.
+=======
+Step 5 may be quite hard to complete as it requires to compile both the *transformer engine* and *flash attention*.\
+If you have trouble compiling either please check the following on Linux / Windows WSL:\
+**1) Cudnn 9.6.0 is installed:**
+https://developer.download.nvidia.com/compute/cudnn/9.6.0/local_installers/cudnn-local-repo-ubuntu2204-9.6.0_1.0-1_amd64.deb
 
-## License and Contact
+**2) The Paths to the Cuda Libraries and the C++ compilers are properly set**
+```
+export CUDA_HOME=/usr/local/cuda
+export CC=/usr/bin/gcc
+export CXX=/usr/bin/g++ 
+```
 
-This project will download and install additional third-party open source software projects. Review the license terms of these open source projects before use.
+**3) The Cudnn header files are in the cuda include directory** 
+```
+sudo cp /usr/include/cudnn* /usr/local/cuda/include/ 
+```
 
-NVIDIA Cosmos source code is released under the [Apache 2 License](https://www.apache.org/licenses/LICENSE-2.0).
+Be aware that compiling *flash attention* may take a couple of hours.
+>>>>>>> 781c3f1 (First Release)
 
-NVIDIA Cosmos models are released under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). For a custom license, please contact [cosmos-license@nvidia.com](mailto:cosmos-license@nvidia.com).
+Please note:
+-  *Sage attention* is also quite complex to install on Windows but is a bit faster than the xformers attention. Moreover Sage Attention seems to have some compatibility issues with *Pytorch Compilation*.
+-  *Pytorch Compilation* will work on Windows only if you manage to install Triton. It is quite a complex process I will try to provide a script in the future.
+
+### Profiles
+You can choose between 5 profiles depending on your hardware:
+- HighRAM_HighVRAM  (1): at least 48 GB of RAM and 24 GB of VRAM : the fastest well suited for a RTX 3090 / RTX 4090 but consumes much more VRAM, adapted for fast shorter video
+- HighRAM_LowVRAM  (2): at least 48 GB of RAM and 12 GB of VRAM : a bit slower, better suited for RTX 3070/3080/4070/4080 or for RTX 3090 / RTX 4090 with large pictures batches or long videos
+- LowRAM_HighVRAM  (3): at least 32 GB of RAM and 24 GB of VRAM : adapted for RTX 3090 / RTX 4090 with limited RAM  but at the cost of VRAM (shorter videos)
+- LowRAM_LowVRAM  (4): at least 32 GB of RAM and 12 GB of VRAM :  if you have little VRAM or want to generate longer videos 
+- VerylowRAM_LowVRAM  (5): at least 24 GB of RAM and 10 GB of VRAM : if you don't have much it won't be fast but maybe it will work
+
+Profile 2 (High RAM) and 4 (Low RAM)are the most recommended profiles since they are versatile (support for long videos for a slight performance cost).\
+However, a safe approach is to start from profile 5 (default profile) and then go down progressively to profile 4 and then to profile 2 as long as the app remains responsive or doesn't trigger any out of memory error.
+
+
+### Run a Gradio Server on port 7860 (recommended)
+To run the text 2 world (video) model:
+```bash
+python3 gradio_server_t2w.py
+```
+
+To run the image or video 2 world (video) model:
+```bash
+python3 gradio_server_v2w.py
+```
+
+You will have the possibility to configure a RAM / VRAM profile by expanding the section *Video Engine Configuration* in the Web Interface.\
+
+If by mistake you have chosen a configuration not supported by your system, you can force a profile while loading the app with the safe profile 5:  
+```bash
+python3 gradio_server_t2w.py --profile 5
+```
+
+To run the the application using the Nvidia Transformer Engine (if you have trouble generating 10s videos and  / or if you have improperly rendered videos, see below):
+```bash
+python3 gradio_server_v2w.py --use-te
+```
+
+Try to use prompts that are a few hundreds characters long as short prompts do not seem to produce great videos. You may get some assistance from a large language model.
+
+Please note that currently only the *xformers* attention works with the Video2World model, although it is not clear if it follows properly the prompt. It is why I recommend to use the Transformer Engine if you can.
+
+
+### Command line parameters for Gradio Server
+--use-te : run the server using the Transformer Engine (see installation abover)
+--profile no : default (5) : no of profile between 1 and 5\
+--quantize-transformer bool: (default True) : enable / disable on the fly transformer quantization\
+--verbose level : default (1) : level of information between 0 and 2\
+--server-port portno : default (7860) : Gradio port no\
+--server-name name : default (0.0.0.0) : Gradio server name\
+--open-browser : open automatically Browser when launching Gradio Server\
+
+
+### Other Models for the GPU Poor
+- HuanyuanVideoGP: https://github.com/deepbeepmeep/HunyuanVideoGP
+One of the best open source Text to Video generator
+
+- FluxFillGP: https://github.com/deepbeepmeep/FluxFillGP
+One of the best inpainting / outpaing tools based on Flux that can run with less than 12 GB of VRAM.
+
+
+
+
+### Many thanks to:
+- NVidia for this great models family
+- The ComfyUI team for providing the bits of code to run Cosmos1 without the Transformer Engine
+- Hugginface for their tools (optimim-quanto, accelerate, safetensors, transformers, ...) that were helpful to build the mmgp module

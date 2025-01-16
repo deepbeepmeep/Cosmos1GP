@@ -99,7 +99,7 @@ class DiffusionT2WModel(torch.nn.Module):
     def set_up_model(self, memory_format: torch.memory_format = torch.preserve_format):
         """Initialize the core model components including network, conditioner and logvar."""
         self.model = self.build_model()
-        self.model = self.model.to(memory_format=memory_format, **self.tensor_kwargs)
+        # self.model = self.model.to(memory_format=memory_format, **self.tensor_kwargs)
 
     def build_model(self) -> torch.nn.ModuleDict:
         """Construct the model's neural network components.
@@ -237,6 +237,8 @@ class DiffusionT2WModel(torch.nn.Module):
         solver_option: COMMON_SOLVER_OPTIONS = "2ab",
         x_sigma_max: Optional[torch.Tensor] = None,
         sigma_max: float | None = None,
+        callback= None
+
     ) -> Tensor:
         """Generate samples from a data batch using diffusion sampling.
 
@@ -275,7 +277,7 @@ class DiffusionT2WModel(torch.nn.Module):
             )
 
         samples = self.sampler(
-            x0_fn, x_sigma_max, num_steps=num_steps, sigma_max=sigma_max, solver_option=solver_option
+            x0_fn, x_sigma_max, num_steps=num_steps, sigma_max=sigma_max, solver_option=solver_option, callback_fns= None if callback is None else [callback] 
         )
 
         return samples

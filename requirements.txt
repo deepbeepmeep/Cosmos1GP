@@ -28,3 +28,13 @@ pillow
 sentencepiece
 termcolor
 transformers==4.45.0
+einops
+attrs
+pynvml
+mmgp==3.1.0
+xformers==-0.0.28.post2
+opencv-python
+protobuf
+gradio
+#transformer_engine_torch
+#flash-attn==2.6.0.post1

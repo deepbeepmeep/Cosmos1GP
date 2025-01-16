@@ -125,6 +125,7 @@ class Sampler(torch.nn.Module):
         S_max: float = float("inf"),
         S_noise: float = 1,
         solver_option: str = "2ab",
+        callback_fns: Optional[List[Callable]] = None,
     ) -> torch.Tensor:
         in_dtype = x_sigma_max.dtype
 
@@ -147,7 +148,7 @@ class Sampler(torch.nn.Module):
         timestamps_cfg = SolverTimestampConfig(nfe=num_steps, t_min=sigma_min, t_max=sigma_max, order=rho)
         sampler_cfg = SamplerConfig(solver=solver_cfg, timestamps=timestamps_cfg, sample_clean=True)
 
-        return self._forward_impl(float64_x0_fn, x_sigma_max, sampler_cfg).to(in_dtype)
+        return self._forward_impl(float64_x0_fn, x_sigma_max, sampler_cfg, callback_fns).to(in_dtype)
 
     @torch.no_grad()
     def _forward_impl(
