@@ -12,17 +12,8 @@
 Details of the platform is described in the [Cosmos paper](https://research.nvidia.com/publication/2025-01_cosmos-world-foundation-model-platform-physical-ai). Preview access is avaiable at [build.nvidia.com](https://build.nvidia.com).
 
 
-<<<<<<< HEAD
-- [Pre-trained Diffusion-based world foundation models](cosmos1/models/diffusion/README.md) for Text2World and Video2World generation where a user can generate visual simulation based on text prompts and video prompts.
-- [Pre-trained Autoregressive-based world foundation models](cosmos1/models/autoregressive/README.md) for Video2World generation where a user can generate visual simulation based on video prompts and optional text prompts.
-- [Video tokenizers](https://github.com/NVIDIA/Cosmos-Tokenizer) for tokenizing videos into continuous tokens (latent vectors) and discrete tokens (integers) efficiently and effectively.
-- Video curation pipeline for building your own video dataset. [Coming soon]
-- [Post-training scripts](cosmos1/models/POST_TRAINING.md) via NeMo Framework to post-train the pre-trained world foundation models for various Physical AI setup.
-- Pre-training scripts via NeMo Framework for building your own world foundation model. [[Diffusion](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/diffusion)] [[Autoregressive](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/multimodal_autoregressive)] [[Tokenizer](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/diffusion/vae)].
-=======
 # Cosmos1 (Text2World and Image2World): GPU Poor version by **DeepBeepMeep**
 01/15/2024: Version 1.0 First release
->>>>>>> 781c3f1 (First Release)
 
 This version offers the following improvements :
 - Reduced greatly the RAM requirements and VRAM requirements
@@ -50,34 +41,27 @@ It is why I suggest instead to follow these instructions:
 
 
 ```shell
-# 1. Install Python 3.10.9
+# 1. Get this Repository
+git clone https://github.com/deepbeepmeep/Cosmos1GP
+cd Cosmos1GP
+
+# 2. Install Python 3.10.9
 conda create -n cosmos1 python==3.10.9 
 
-# 2. Install pytorch 2.5.0
+# 3. Install pytorch 2.5.0
 pip install torch==2.5.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/cu124
 
-# 3. Install pip dependencies
+# 4. Install pip dependencies
 pip install -r requirements.txt
 
-# 4. Optional: Sage attention support (30% faster, easy to install on Linux but much harder on Windows)
+# 5. Optional: Sage attention support (30% faster, easy to install on Linux but much harder on Windows)
 pip install sageattention==1.0.6 
 
-# 5. Optional: Transformer Engine support (builtin compilation and different memory management may be consequently more efficient)
+# 6. Optional: Transformer Engine support (builtin compilation and different memory management may be consequently more efficient)
 pip install transformer_engine_torch
 pip install flash-attn==2.6.0.post1
 ```
 
-<<<<<<< HEAD
-<video src="https://github.com/user-attachments/assets/db7bebfe-5314-40a6-b045-4f6ce0a87f2a">
-  Your browser does not support the video tag.
-</video>
-
-We also offer [multi-GPU inference](cosmos1/models/diffusion/nemo/inference/README.md) support for Diffusion Text2World WFM models through NeMo Framework.
-
-### Post-training
-
-NeMo Framework provides GPU accelerated post-training with general post-training for both [diffusion](cosmos1/models/diffusion/nemo/post_training/README.md) and [autoregressive](cosmos1/models/autoregressive/nemo/post_training/README.md) models, with other types of post-training coming soon.
-=======
 Step 5 may be quite hard to complete as it requires to compile both the *transformer engine* and *flash attention*.\
 If you have trouble compiling either please check the following on Linux / Windows WSL:\
 **1) Cudnn 9.6.0 is installed:**
@@ -96,7 +80,6 @@ sudo cp /usr/include/cudnn* /usr/local/cuda/include/
 ```
 
 Be aware that compiling *flash attention* may take a couple of hours.
->>>>>>> 781c3f1 (First Release)
 
 Please note:
 -  *Sage attention* is also quite complex to install on Windows but is a bit faster than the xformers attention. Moreover Sage Attention seems to have some compatibility issues with *Pytorch Compilation*.

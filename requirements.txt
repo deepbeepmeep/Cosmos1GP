@@ -32,7 +32,7 @@ einops
 attrs
 pynvml
 mmgp==3.1.0
-xformers==-0.0.28.post2
+xformers==0.0.28.post2
 opencv-python
 protobuf
 gradio
