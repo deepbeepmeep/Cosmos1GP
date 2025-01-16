@@ -46,7 +46,7 @@ git clone https://github.com/deepbeepmeep/Cosmos1GP
 cd Cosmos1GP
 
 # 2. Install Python 3.10.9
-conda create -n cosmos1 python==3.10.9 
+conda create -n Cosmos1GP python==3.10.9 
 
 # 3. Install pytorch 2.5.0
 pip install torch==2.5.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/cu124
@@ -140,7 +140,7 @@ Please note that currently only the *xformers* attention works with the Video2Wo
 One of the best open source Text to Video generator
 
 - FluxFillGP: https://github.com/deepbeepmeep/FluxFillGP
-One of the best inpainting / outpaing tools based on Flux that can run with less than 12 GB of VRAM.
+One of the best inpainting / outpainting tools based on Flux that can run with less than 12 GB of VRAM.
 
 
 

@@ -32,6 +32,7 @@ einops
 attrs
 pynvml
 mmgp==3.1.0
+ninja
 xformers==0.0.28.post2
 opencv-python
 protobuf
