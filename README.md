@@ -16,9 +16,13 @@ Details of the platform is described in the [Cosmos paper](https://research.nvid
 # Cosmos1 (Text2World and Image2World): GPU Poor version by **DeepBeepMeep**
 01/15/2024: Version 1.0 First release
 
-<video src="samples/mammoths.mp4" width="320" height="240" controls></video>
-<video src="samples/tiger.mp4" width="320" height="240" controls></video>
-<video src="samples/carinmountain.mp4" width="320" height="240" controls></video>
+https://github.com/user-attachments/assets/37db0c39-1fa2-4dd6-84c9-3493fd0c3eed
+
+https://github.com/user-attachments/assets/8fa1a249-c324-4789-9100-9ae196da08c6
+
+https://github.com/user-attachments/assets/8da7d14d-28b5-4902-97e4-4a0171b6725f
+
+
 
 This version offers the following improvements :
 - Reduced greatly the RAM requirements and VRAM requirements
