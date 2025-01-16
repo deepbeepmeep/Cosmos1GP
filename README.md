@@ -12,8 +12,13 @@
 Details of the platform is described in the [Cosmos paper](https://research.nvidia.com/publication/2025-01_cosmos-world-foundation-model-platform-physical-ai). Preview access is avaiable at [build.nvidia.com](https://build.nvidia.com).
 
 
+
 # Cosmos1 (Text2World and Image2World): GPU Poor version by **DeepBeepMeep**
 01/15/2024: Version 1.0 First release
+
+<video src="samples/mammoths.mp4" width="320" height="240" controls></video>
+<video src="samples/tiger.mp4" width="320" height="240" controls></video>
+<video src="samples/carinmountain.mp4" width="320" height="240" controls></video>
 
 This version offers the following improvements :
 - Reduced greatly the RAM requirements and VRAM requirements
