@@ -1,10 +1,9 @@
 import os
 import time
-import triton
-# try:
-#     import triton
-# except ImportError:
-#     pass
+try:
+    import triton
+except ImportError:
+    pass
 from pathlib import Path
 
 import gradio as gr
