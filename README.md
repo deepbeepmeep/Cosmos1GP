@@ -16,9 +16,13 @@ Details of the platform is described in the [Cosmos paper](https://research.nvid
 # Cosmos1 (Text2World and Image2World): GPU Poor version by **DeepBeepMeep**
 01/15/2024: Version 1.0 First release
 
-<video src="samples/mammoths.mp4" width="320" height="240" controls></video>
-<video src="samples/tiger.mp4" width="320" height="240" controls></video>
-<video src="samples/carinmountain.mp4" width="320" height="240" controls></video>
+https://github.com/user-attachments/assets/37db0c39-1fa2-4dd6-84c9-3493fd0c3eed
+
+https://github.com/user-attachments/assets/8fa1a249-c324-4789-9100-9ae196da08c6
+
+https://github.com/user-attachments/assets/8da7d14d-28b5-4902-97e4-4a0171b6725f
+
+
 
 This version offers the following improvements :
 - Reduced greatly the RAM requirements and VRAM requirements
@@ -41,8 +45,8 @@ For more information on how to use the mmpg module, please go to: https://github
 
 ### Installation Guide for Linux and Windows
 
-You will find Docker container on the Cosmos1 homepage, however you will have a hard to make it work on Windows or Windows WSL because this container contains Nvidia Graphics kernel which are not compatible with Windows.\
-It is why I suggest instead to follow these instructions:
+You will find a Docker container on the Cosmos1 homepage, however you will have a hard time to make it work on Windows or Windows WSL because this container contains Nvidia Graphics drivers which are not compatible with Windows.\
+It is why I suggest instead to follow these installation instructions:
 
 
 ```shell
@@ -67,7 +71,7 @@ pip install transformer_engine_torch
 pip install flash-attn==2.6.0.post1
 ```
 
-Step 5 may be quite hard to complete as it requires to compile both the *transformer engine* and *flash attention*.\
+Step 6 may be quite hard to complete as it requires to compile both the *transformer engine* and *flash attention*.\
 If you have trouble compiling either please check the following on Linux / Windows WSL:\
 **1) Cudnn 9.6.0 is installed:**
 https://developer.download.nvidia.com/compute/cudnn/9.6.0/local_installers/cudnn-local-repo-ubuntu2204-9.6.0_1.0-1_amd64.deb
@@ -90,19 +94,8 @@ Please note:
 -  *Sage attention* is also quite complex to install on Windows but is a bit faster than the xformers attention. Moreover Sage Attention seems to have some compatibility issues with *Pytorch Compilation*.
 -  *Pytorch Compilation* will work on Windows only if you manage to install Triton. It is quite a complex process I will try to provide a script in the future.
 
-### Profiles
-You can choose between 5 profiles depending on your hardware:
-- HighRAM_HighVRAM  (1): at least 48 GB of RAM and 24 GB of VRAM : the fastest well suited for a RTX 3090 / RTX 4090 but consumes much more VRAM, adapted for fast shorter video
-- HighRAM_LowVRAM  (2): at least 48 GB of RAM and 12 GB of VRAM : a bit slower, better suited for RTX 3070/3080/4070/4080 or for RTX 3090 / RTX 4090 with large pictures batches or long videos
-- LowRAM_HighVRAM  (3): at least 32 GB of RAM and 24 GB of VRAM : adapted for RTX 3090 / RTX 4090 with limited RAM  but at the cost of VRAM (shorter videos)
-- LowRAM_LowVRAM  (4): at least 32 GB of RAM and 12 GB of VRAM :  if you have little VRAM or want to generate longer videos 
-- VerylowRAM_LowVRAM  (5): at least 24 GB of RAM and 10 GB of VRAM : if you don't have much it won't be fast but maybe it will work
 
-Profile 2 (High RAM) and 4 (Low RAM)are the most recommended profiles since they are versatile (support for long videos for a slight performance cost).\
-However, a safe approach is to start from profile 5 (default profile) and then go down progressively to profile 4 and then to profile 2 as long as the app remains responsive or doesn't trigger any out of memory error.
-
-
-### Run a Gradio Server on port 7860 (recommended)
+### Run a Gradio Server on port 7860 (by default)
 To run the text 2 world (video) model:
 ```bash
 python3 gradio_server_t2w.py
@@ -113,7 +106,7 @@ To run the image or video 2 world (video) model:
 python3 gradio_server_v2w.py
 ```
 
-You will have the possibility to configure a RAM / VRAM profile by expanding the section *Video Engine Configuration* in the Web Interface.\
+You will have the possibility to configure a RAM / VRAM profile (see section below) by expanding the section *Video Engine Configuration* in the Web Interface.\
 
 If by mistake you have chosen a configuration not supported by your system, you can force a profile while loading the app with the safe profile 5:  
 ```bash
@@ -125,12 +118,31 @@ To run the the application using the Nvidia Transformer Engine (if you have trou
 python3 gradio_server_v2w.py --use-te
 ```
 
-Try to use prompts that are a few hundreds characters long as short prompts do not seem to produce great videos. You may get some assistance from a large language model.
+Try to use prompts that are a few hundreds characters long as short prompts do not seem to produce great videos. You may get some assistance from a large language model. It is also unclear yet if rendering resolutions other than 1280x720 can give good results. 
 
 Please note that currently only the *xformers* attention works with the Video2World model, although it is not clear if it follows properly the prompt. It is why I recommend to use the Transformer Engine if you can.
 
+### Profiles
+You can choose between 5 profiles depending on your hardware:
+- HighRAM_HighVRAM  (1): at least 48 GB of RAM and 24 GB of VRAM : the fastest well suited for a RTX 3090 / RTX 4090 but consumes much more VRAM, adapted for fast shorter video
+- HighRAM_LowVRAM  (2): at least 48 GB of RAM and 12 GB of VRAM : a bit slower, better suited for RTX 3070/3080/4070/4080 or for RTX 3090 / RTX 4090 with large pictures batches or long videos
+- LowRAM_HighVRAM  (3): at least 32 GB of RAM and 24 GB of VRAM : adapted for RTX 3090 / RTX 4090 with limited RAM  but at the cost of VRAM (shorter videos)
+- LowRAM_LowVRAM  (4): at least 32 GB of RAM and 12 GB of VRAM :  if you have little VRAM or want to generate longer videos 
+- VerylowRAM_LowVRAM  (5): at least 24 GB of RAM and 12 GB of VRAM : if you don't have much it won't be fast but maybe it will work
 
-### Command line parameters for Gradio Server
+Profile 2 (High RAM) and 4 (Low RAM)are the most recommended profiles since they are versatile (support for long videos for a slight performance cost).\
+However, a safe approach is to start from profile 5 (default profile) and then go down progressively to profile 4 and then to profile 2 as long as the app remains responsive or doesn't trigger any out of memory error.
+
+### Troubleshooting
+Unfortunately, as the minimum of images generated is 121 frames (5s) this requires a minimum of VRAM and configs with 12 GB of VRAM may have some issues :
+
+1) You may try lower resolutions. However it seems to be optimized for 1280x720 and the quality seems worse with other resolutions
+
+2) You may try to turn on compilation with Xformers in the Video Engine configuration menu, usually compilation consumes less VRAM
+
+3) The original Nvidia Transformer Engine is more VRAM efficient than xformers. So you need to install it first (see instructions above) and run the application with the ‘—use-te’ parameter
+
+### Command line parameters for the Gradio Server
 --use-te : run the server using the Transformer Engine (see installation abover)
 --profile no : default (5) : no of profile between 1 and 5\
 --quantize-transformer bool: (default True) : enable / disable on the fly transformer quantization\
