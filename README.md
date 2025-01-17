@@ -45,8 +45,8 @@ For more information on how to use the mmpg module, please go to: https://github
 
 ### Installation Guide for Linux and Windows
 
-You will find Docker container on the Cosmos1 homepage, however you will have a hard to make it work on Windows or Windows WSL because this container contains Nvidia Graphics kernel which are not compatible with Windows.\
-It is why I suggest instead to follow these instructions:
+You will find a Docker container on the Cosmos1 homepage, however you will have a hard time to make it work on Windows or Windows WSL because this container contains Nvidia Graphics drivers which are not compatible with Windows.\
+It is why I suggest instead to follow these installation instructions:
 
 
 ```shell
@@ -71,7 +71,7 @@ pip install transformer_engine_torch
 pip install flash-attn==2.6.0.post1
 ```
 
-Step 5 may be quite hard to complete as it requires to compile both the *transformer engine* and *flash attention*.\
+Step 6 may be quite hard to complete as it requires to compile both the *transformer engine* and *flash attention*.\
 If you have trouble compiling either please check the following on Linux / Windows WSL:\
 **1) Cudnn 9.6.0 is installed:**
 https://developer.download.nvidia.com/compute/cudnn/9.6.0/local_installers/cudnn-local-repo-ubuntu2204-9.6.0_1.0-1_amd64.deb
@@ -106,7 +106,7 @@ Profile 2 (High RAM) and 4 (Low RAM)are the most recommended profiles since they
 However, a safe approach is to start from profile 5 (default profile) and then go down progressively to profile 4 and then to profile 2 as long as the app remains responsive or doesn't trigger any out of memory error.
 
 
-### Run a Gradio Server on port 7860 (recommended)
+### Run a Gradio Server on port 7860 (by default)
 To run the text 2 world (video) model:
 ```bash
 python3 gradio_server_t2w.py
@@ -129,7 +129,7 @@ To run the the application using the Nvidia Transformer Engine (if you have trou
 python3 gradio_server_v2w.py --use-te
 ```
 
-Try to use prompts that are a few hundreds characters long as short prompts do not seem to produce great videos. You may get some assistance from a large language model.
+Try to use prompts that are a few hundreds characters long as short prompts do not seem to produce great videos. You may get some assistance from a large language model. It is also unclear yet if rendering resolutions other than 1280x720 can give good results. 
 
 Please note that currently only the *xformers* attention works with the Video2World model, although it is not clear if it follows properly the prompt. It is why I recommend to use the Transformer Engine if you can.
 
