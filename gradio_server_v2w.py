@@ -175,7 +175,7 @@ profile =  force_profile_no if force_profile_no >=0 else server_config["profile"
 compile = server_config.get("compile", "")
 
 #### test Zone 
-attention_mode="sage"
+#attention_mode="sage"
 #attention_mode="xformers"
 #attention_mode = "sdpa"
 #quantizeTransformer = True
@@ -576,7 +576,6 @@ def create_demo():
                     label="Attention Type"
                  )
                 gr.Markdown("**Compilation is not relevant with the Transformer Engine since it has its own inductor / compiler**")
-                gr.Markdown("**Sage attention produces currenltly Garbage when using compilation**")
                 gr.Markdown("Beware: when restarting the server or changing a resolution or video duration, the first step of generation for a duration / resolution may last a few minutes due to recompilation")
                 compile_choice = gr.Dropdown(
                     choices=[

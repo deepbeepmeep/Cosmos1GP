@@ -130,7 +130,7 @@ cfg = args
 
 misc.set_random_seed(cfg.seed)
 video2world = args.video2world
-
+#video2world = True
 if video2world:
     inference_type = "video2world"
 else:
@@ -146,15 +146,15 @@ quantizeTransformer = args.quantize_transformer
 
 text_encoder_choices= ["T5XXLEncoder_11B.safetensors", "T5XXLEncoder_11B_quanto_int8.safetensors"]
 if video2world:
-    transformer_choices = ["cosmo1_14B_video2world.safetensors", "cosmo1_14B_video2world_quanto_int8.safetensors"]
+    transformer_choices = ["cosmo1_14B_video2world.safetensors", "cosmo1_14B_video2world_quanto_int8.safetensors", "cosmo1_7B_video2world.safetensors", "cosmo1_7B_video2world_quanto_int8.safetensors"]
     server_config_filename = "gradio_config_v2w.json"
 else:
-    transformer_choices = ["cosmo1_14B_text2world.safetensors", "cosmo1_14B_text2world_quanto_int8.safetensors"]
+    transformer_choices = ["cosmo1_14B_text2world.safetensors", "cosmo1_14B_text2world_quanto_int8.safetensors", "cosmo1_7B_text2world.safetensors", "cosmo1_7B_text2world_quanto_int8.safetensors"]
     server_config_filename = "gradio_config_t2w.json"
 
 
 if not Path(server_config_filename).is_file():
-    server_config = {"attention_mode" : "xformers",  
+    server_config = {"attention_mode" : "sdpa",  
                     "transformer_filename": transformer_choices[1], 
                     "text_encoder_filename" : text_encoder_choices[1],
                     "compile" : "",
@@ -170,17 +170,24 @@ else:
 transformer_filename = server_config["transformer_filename"]
 text_encoder_filename = server_config["text_encoder_filename"]
 attention_mode = server_config["attention_mode"]
+attention_mode = "sdpa" if attention_mode == "basic" else attention_mode
 profile =  force_profile_no if force_profile_no >=0 else server_config["profile"]
 compile = server_config.get("compile", "")
+
+#### test Zone 
+#attention_mode="sage"
+#attention_mode="xformers"
+#attention_mode = "sdpa"
+#quantizeTransformer = True
+#compile = "transformer"
 
 if use_te:
     compile =""
 
-#attention_mode="sage"
-#attention_mode="xformers"
-#attention_mode = "basic"
-#compile = "transformer"
+if compile != None and len(compile) and not quantizeTransformer:
+    offload.shared_state["patch_compiler"]= True
 
+offload.shared_state["patch_compiler"]= True 
 offload.shared_state["attention_mode"] = attention_mode
 def download_models(transformer_filename, text_encoder_filename):
     from huggingface_hub import hf_hub_download, snapshot_download    
@@ -188,7 +195,7 @@ def download_models(transformer_filename, text_encoder_filename):
     sourceFolderList = ["Cosmos-1.0-Tokenizer-CV8x8x8", "text_encoder",  "transformer" ]
     fileList = [ [], ["config.json", "spiece.model", "tokenizer.json", "config.json", text_encoder_filename] , [transformer_filename] ]
     targetRoot = "checkpoints/" 
-    for sourceFolder, files in zip(sourceFolderList,fileList ):
+    for sourceFolder, files in zip(sourceFolderList,fileList ): 
         if len(files)==0:
             if not Path(targetRoot + sourceFolder).exists():
                 snapshot_download(repo_id=repoId,  allow_patterns=sourceFolder +"/*", local_dir= targetRoot)
@@ -216,16 +223,29 @@ cfg.disable_prompt_upsampler = True
 # text_encoder_filename = "T5XXLEncoder_11B.safetensors" 
 # text_encoder_filename = "T5XXLEncoder_11B_quanto_int8.safetensors" 
 if video2world:
-    cfg.diffusion_transformer_dir = "Cosmos-1.0-Diffusion-14B-Video2World" 
-    checkpoint_name = "Cosmos-1.0-Diffusion-14B-Video2World"
     # transformer_filename = "cosmo1_14B_video2world.safetensors"
     # transformer_filename = "cosmo1_14B_video2world_quanto_int8.safetensors"
+    # transformer_filename = "cosmo1_7B_video2world.safetensors"
+    # transformer_filename = "cosmo1_7B_video2world_quanto_int8.safetensors"
 
+    if "14B" in transformer_filename:
+        cfg.diffusion_transformer_dir = "Cosmos-1.0-Diffusion-14B-Video2World" 
+        checkpoint_name = "Cosmos-1.0-Diffusion-14B-Video2World"
+    else:
+        cfg.diffusion_transformer_dir = "Cosmos-1.0-Diffusion-7B-Video2World" 
+        checkpoint_name = "Cosmos-1.0-Diffusion-7B-Video2World"
 else:
-    cfg.diffusion_transformer_dir = "Cosmos-1.0-Diffusion-14B-Text2World" 
-    checkpoint_name = "Cosmos-1.0-Diffusion-14B-Text2World"
     # transformer_filename = "cosmo1_14B_text2world.safetensors"
     # transformer_filename = "cosmo1_14B_text2world_quanto_int8.safetensors"
+    # transformer_filename = "cosmo1_7B_text2world.safetensors"
+    # transformer_filename = "cosmo1_7B_text2world_quanto_int8.safetensors"
+
+    if "14B" in transformer_filename:
+        cfg.diffusion_transformer_dir = "Cosmos-1.0-Diffusion-14B-Text2World" 
+        checkpoint_name = "Cosmos-1.0-Diffusion-14B-Text2World"
+    else:
+        cfg.diffusion_transformer_dir = "Cosmos-1.0-Diffusion-7B-Text2World" 
+        checkpoint_name = "Cosmos-1.0-Diffusion-7B-Text2World"
 
 if video2world:
     # Initialize video2world generation model pipeline
@@ -280,11 +300,10 @@ else:
         enable_text_guardrail = False,
         enable_video_guardrail = False,
     )
+    #.model
     pipe = { "transformer" : pipeline.model.model, "text_encoder" : pipeline.text_encoder.text_encoder} #, "vae" : pipeline.model.tokenizer.video_vae 
-
-
-pipeline._offload = offload.profile(pipe,  profile_no= profile,  compile  = compile , quantizeTransformer = quantizeTransformer) #, 
-
+ 
+pipeline._offload = offload.profile(pipe,  profile_no= profile,  compile  = compile ,  quantizeTransformer = quantizeTransformer) #, 
 
 
 
@@ -354,6 +373,7 @@ def select_video(state , event_data: gr.EventData):
 
 def generate_video(
     prompt,
+    neg_prompt,
     resolution,
     video_length,
     seed,
@@ -446,9 +466,9 @@ def generate_video(
             # if True:
             try:
                 if video2world:
-                    generated_output = pipeline.generate(prompt = current_prompt, negative_prompt=  cfg.negative_prompt, image_or_video_path = input_image_or_video_path)
+                    generated_output = pipeline.generate(prompt = current_prompt, negative_prompt=  neg_prompt, image_or_video_path = input_image_or_video_path)
                 else:
-                    generated_output = pipeline.generate(prompt = current_prompt, negative_prompt=  cfg.negative_prompt)
+                    generated_output = pipeline.generate(prompt = current_prompt, negative_prompt=  neg_prompt)
 
             except Exception as e:
                 s = str(e)
@@ -519,13 +539,15 @@ def create_demo():
 
             with gr.Column():
                 index = transformer_choices.index(transformer_filename) 
-                index = 0
                 index = 0 if index ==0 else index
 
+                gr.Markdown("Note that currently due somme issue in the original Cosmos repo 16 bits (non quantized) models may be veryslow in the Transformer Engine")
                 transformer_choice = gr.Dropdown(
                     choices=[
-                        ("Cosmos1 16 bits, not reocommended with the Transformer Engine as it can be very slow on some configuration", 0),
-                        ("Cosmos1 quantized to 8 bits (recommended) - the default engine but quantized", 1),
+                        ("Cosmos1 14B 16 bits - the best quality but takes the most time", 0),
+                        ("Cosmos1 14B quantized to 8 bits - the default engine but quantized", 1),
+                        ("Cosmos1 7B 16 bits - lower model", 2),
+                        ("Cosmos1 7B quantized to 8 bits - worst quality", 3),
                     ],
                     value= index,
                     label="Transformer"
@@ -546,9 +568,9 @@ def create_demo():
                 gr.Markdown("**When using the Transformer Engine, the attention mode is forced to Flash attention**")
                 attention_choice = gr.Dropdown(
                     choices=[
-                        ("basic:very slow but doesn't require any installation", "basic"),
+                        ("Sdpa: default torch attention, compatible with Windows but requires more memory", "sdpa"),
                         ("Xformers: good quality - requires additional install", "xformers"),
-                        ("Sage: 30% faster but worse quality - requires additional install (usually complex to set up on Windows without WSL)", "sage"),
+                        ("Sage: 30% faster but slightly worse quality - requires additional install (usually complex to set up on Windows without WSL)", "sage"),
                     ],
                     value= attention_mode,
                     label="Attention Type"
@@ -561,7 +583,7 @@ def create_demo():
                         ("OFF: no other choice if you have Windows without using WSL", "" ),
                     ],
                     value= compile,
-                    label="Compile Transformer (up to 50% faster and 30% more frames but requires Linux / WSL and Xformers or Sage attention)"
+                    label="Compile Transformer (up to 50% faster and 30% more frames (less VRAM consumption) but requires triton support"
                  )                
                 profile_choice = gr.Dropdown(
                     choices=[
@@ -632,6 +654,7 @@ def create_demo():
                 show_advanced = gr.Checkbox(label="Show Advanced Options", value=False)
                 with gr.Row(visible=False) as advanced_row:
                     with gr.Column():
+                        neg_prompt = gr.Textbox(label="Negative Prompt", lines = 3, value=cfg.negative_prompt)
                         seed = gr.Number(value=-1, label="Seed (-1 for random)")
                         # guidance_scale = gr.Slider(1.0, 20.0, value=1.0, step=0.5, label="Guidance Scale")
                         # flow_shift = gr.Slider(0.0, 25.0, value=7.0, step=0.1, label="Flow Shift") 
@@ -668,6 +691,7 @@ def create_demo():
             fn=generate_video,
             inputs=[
                 prompt,
+                neg_prompt,
                 resolution,
                 video_length,
                 seed,
