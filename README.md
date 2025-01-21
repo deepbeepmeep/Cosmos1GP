@@ -9,7 +9,7 @@
 1. pre-trained models, available via [Hugging Face](https://huggingface.co/collections/nvidia/cosmos-6751e884dc10e013a0a0d8e6) under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/) that allows commercial use of the models for free
 2. training scripts under the [Apache 2 License](https://www.apache.org/licenses/LICENSE-2.0), offered through [NVIDIA Nemo Framework](https://github.com/NVIDIA/NeMo) for post-training the models for various downstream Physical AI applications
 
-Details of the platform is described in the [Cosmos paper](https://research.nvidia.com/publication/2025-01_cosmos-world-foundation-model-platform-physical-ai). Preview access is avaiable at [build.nvidia.com](https://build.nvidia.com).
+Details of the platform is described in the [Cosmos paper](https://research.nvidia.com/publication/2025-01_cosmos-world-foundation-model-platform-physical-ai). Preview access is available at [build.nvidia.com](https://build.nvidia.com).
 
 
 
@@ -137,11 +137,13 @@ Try to use prompts that are a few hundreds characters long as short prompts do n
 Thanks to a highly optimized offloading optimizations provided by the mmgp module, the size of the model (7B or 14B) you chose will have little impact on the VRAM requirements.
 
 However, as general rule of thumb, 7B models take two times less time than 14B models and quantized models are 15% faster.
-Sample generation times on a RTX 4090 for 5s 25 steps 1280x720 with sage attention buy no Pytorch compile:  
+Sample generation times on a RTX 4090 for 5s 25 steps 1280x720 with sage attention but no Pytorch compile:  
 - 14B non quantized: 23 minutes
 - 14B quantized: 20 minutes
 - 7B non quantized: 12 minutes
 - 7B quantized: 10 minutes
+
+If you turn on pytorch compilation with *Sage attention* the 14B non quantized can be run in less than 17 minutes !
 
 Please note that currently only the *xformers* attention works with the Video2World model, although it is not clear if it follows properly the prompt. It is why I recommend to use the Transformer Engine if you can.
 
@@ -163,7 +165,7 @@ Unfortunately, as the minimum of images generated is 121 frames (5s) this requir
 
 2) You may try to turn on compilation with Xformers in the Video Engine configuration menu, usually compilation consumes less VRAM
 
-3) The original Nvidia Transformer Engine is more VRAM efficient than xformers. In order to use it you will need to install it first (see instructions above) and run the application with the ‘—use-te’ parameter
+3) The original Nvidia Transformer Engine is more VRAM efficient than xformers or sdpa attentions. In order to use it you will need to install it first (see instructions above) and run the application with the ‘—use-te’ parameter
 
 **Known issue** :
 - Transformer Engine may be slow on some systems when ran on unquantized models (issue with original repo)
