@@ -30,7 +30,7 @@ if use_TE:
     from transformer_engine.pytorch.attention import DotProductAttention, apply_rotary_pos_emb
 else:
     try:
-        from sageattention import sageattn
+        from sageattention import sageattn, sageattn_varlen
     except:
         sageattn = None
         pass
@@ -40,51 +40,13 @@ else:
     except:
         pass
 
-    BROKEN_XFORMERS = False
     try:
-        import xformers
-        import xformers.ops
-        x_vers = xformers.__version__
-        # XFormers bug confirmed on all versions from 0.0.21 to 0.0.26 (q with bs bigger than 65535 gives CUDA error)
-        BROKEN_XFORMERS = x_vers.startswith("0.0.2") and not x_vers.startswith("0.0.20")
+        from xformers.ops import memory_efficient_attention
     except:
         pass
 
-
-####################### Thanks to ComfyUI for the transformer_engine replacement code ###############################
-#  https://github.com/comfyanonymous/ComfyUI/
-
-    try:
-        rms_norm_torch = torch.nn.functional.rms_norm
-    except:
-        rms_norm_torch = None
-
-    def cast_to(weight, dtype=None, device=None, non_blocking=False, copy=False):
-        if device is None or weight.device == device:
-            if not copy:
-                if dtype is None or weight.dtype == dtype:
-                    return weight
-            return weight.to(dtype=dtype, copy=copy)
-
-        r = torch.empty_like(weight, dtype=dtype, device=device)
-        r.copy_(weight, non_blocking=non_blocking)
-        return r
-
-    def cast_to_input(weight, input, non_blocking=False, copy=True):
-        return cast_to(weight, input.dtype, input.device, non_blocking=non_blocking, copy=copy)
-
     def rms_norm(x, weight=None, eps=1e-6):
-        if rms_norm_torch is not None and not (torch.jit.is_tracing() or torch.jit.is_scripting()):
-            if weight is None:
-                return rms_norm_torch(x, (x.shape[-1],), eps=eps)
-            else:
-                return rms_norm_torch(x, weight.shape, weight=cast_to(weight, dtype=x.dtype, device=x.device), eps=eps)
-        else:
-            r = x * torch.rsqrt(torch.mean(x**2, dim=-1, keepdim=True) + eps)
-            if weight is None:
-                return r
-            else:
-                return r * cast_to(weight, dtype=x.dtype, device=x.device)
+        return torch.nn.functional.rms_norm(x, weight.shape, weight=weight, eps=eps)
             
     class RMSNorm(torch.nn.Module):
         def __init__(
@@ -109,6 +71,9 @@ else:
 
         def forward(self, x):
             return rms_norm(x, self.weight, self.eps)
+        
+####################### Thanks to ComfyUI for the transformer_engine replacement code for apply_rotary_pos_emb  ###############################
+#  https://github.com/comfyanonymous/ComfyUI/
 
     def apply_rotary_pos_emb(
         t: torch.Tensor,
@@ -122,194 +87,6 @@ else:
         t_out = t_out.movedim(-1, -2)
         t_out = t_out.reshape(*t.shape).type_as(t)
         return t_out
-
-    # def get_attn_precision(attn_precision):
-    #     if args.dont_upcast_attention:
-    #         return None
-    #     if FORCE_UPCAST_ATTENTION_DTYPE is not None:
-    #         return FORCE_UPCAST_ATTENTION_DTYPE
-    #     return attn_precision
-
-    def exists(val):
-        return val is not None
-
-    def attention_sage(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
-        if skip_reshape:
-            b, _, _, dim_head = q.shape
-            tensor_layout="HND"
-        else:
-            b, _, dim_head = q.shape
-            dim_head //= heads
-            q, k, v = map(
-                lambda t: t.view(b, -1, heads, dim_head),
-                (q, k, v),
-            )
-            tensor_layout="NHD"
-
-        if mask is not None:
-            # add a batch dimension if there isn't already one
-            if mask.ndim == 2:
-                mask = mask.unsqueeze(0)
-            # add a heads dimension if there isn't already one
-            if mask.ndim == 3:
-                mask = mask.unsqueeze(1)
-
-        out = sageattn(q, k, v, attn_mask=mask, is_causal=False, tensor_layout=tensor_layout)
-
-
-        if tensor_layout == "HND":
-            if not skip_output_reshape:
-                out = (
-                    out.transpose(1, 2).reshape(b, -1, heads * dim_head)
-                )
-        else:
-            if skip_output_reshape:
-                out = out.transpose(1, 2)
-            else:
-                out = out.reshape(b, -1, heads * dim_head)
-        return out
-
-
-    def attention_basic(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
-        attn_precision = None # torch.float32 # get_attn_precision(attn_precision)
-
-        if skip_reshape:
-            b, _, _, dim_head = q.shape
-        else:
-            b, _, dim_head = q.shape
-            dim_head //= heads
-
-        scale = dim_head ** -0.5
-
-        h = heads
-        if skip_reshape:
-            q, k, v = map(
-                lambda t: t.reshape(b * heads, -1, dim_head),
-                (q, k, v),
-            )
-        else:
-            q, k, v = map(
-                lambda t: t.unsqueeze(3)
-                .reshape(b, -1, heads, dim_head)
-                .permute(0, 2, 1, 3)
-                .reshape(b * heads, -1, dim_head)
-                .contiguous(),
-                (q, k, v),
-            )
-
-        # force cast to fp32 to avoid overflowing
-        if attn_precision == torch.float32:
-            sim = einsum('b i d, b j d -> b i j', q.float(), k.float()) * scale
-        else:
-            sim = einsum('b i d, b j d -> b i j', q, k) * scale
-
-        del q, k
-
-        if exists(mask):
-            if mask.dtype == torch.bool:
-                mask = rearrange(mask, 'b ... -> b (...)') #TODO: check if this bool part matches pytorch attention
-                max_neg_value = -torch.finfo(sim.dtype).max
-                mask = repeat(mask, 'b j -> (b h) () j', h=h)
-                sim.masked_fill_(~mask, max_neg_value)
-            else:
-                if len(mask.shape) == 2:
-                    bs = 1
-                else:
-                    bs = mask.shape[0]
-                mask = mask.reshape(bs, -1, mask.shape[-2], mask.shape[-1]).expand(b, heads, -1, -1).reshape(-1, mask.shape[-2], mask.shape[-1])
-                sim.add_(mask)
-
-        # attention, what we cannot get enough of
-        sim = sim.softmax(dim=-1)
-
-        out = einsum('b i j, b j d -> b i d', sim.to(v.dtype), v)
-
-        if skip_output_reshape:
-            out = (
-                out.unsqueeze(0)
-                .reshape(b, heads, -1, dim_head)
-            )
-        else:
-            out = (
-                out.unsqueeze(0)
-                .reshape(b, heads, -1, dim_head)
-                .permute(0, 2, 1, 3)
-                .reshape(b, -1, heads * dim_head)
-            )
-        return out
-    
-
-    def attention_xformers(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False):
-        b = q.shape[0]
-        dim_head = q.shape[-1]
-        # check to make sure xformers isn't broken
-        disabled_xformers = False
-
-        if BROKEN_XFORMERS:
-            if b * heads > 65535:
-                disabled_xformers = True
-
-        if not disabled_xformers:
-            if torch.jit.is_tracing() or torch.jit.is_scripting():
-                disabled_xformers = True
-
-        if disabled_xformers:
-            return attention_basic(q, k, v, heads, mask, skip_reshape=skip_reshape)
-
-        if skip_reshape:
-            # b h k d -> b k h d
-            q, k, v = map(
-                lambda t: t.permute(0, 2, 1, 3),
-                (q, k, v),
-            )
-        # actually do the reshaping
-        else:
-            dim_head //= heads
-            q, k, v = map(
-                lambda t: t.reshape(b, -1, heads, dim_head),
-                (q, k, v),
-            )
-
-        if mask is not None:
-            # add a singleton batch dimension
-            if mask.ndim == 2:
-                mask = mask.unsqueeze(0)
-            # add a singleton heads dimension
-            if mask.ndim == 3:
-                mask = mask.unsqueeze(1)
-            # pad to a multiple of 8
-            pad = 8 - mask.shape[-1] % 8
-            # the xformers docs says that it's allowed to have a mask of shape (1, Nq, Nk)
-            # but when using separated heads, the shape has to be (B, H, Nq, Nk)
-            # in flux, this matrix ends up being over 1GB
-            # here, we create a mask with the same batch/head size as the input mask (potentially singleton or full)
-            mask_out = torch.empty([mask.shape[0], mask.shape[1], q.shape[1], mask.shape[-1] + pad], dtype=q.dtype, device=q.device)
-
-            mask_out[..., :mask.shape[-1]] = mask
-            # doesn't this remove the padding again??
-            mask = mask_out[..., :mask.shape[-1]]
-            mask = mask.expand(b, heads, -1, -1)
-
-        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=mask)
-
-        if skip_output_reshape:
-            out = out.permute(0, 2, 1, 3)
-        else:
-            out = (
-                out.reshape(b, -1, heads * dim_head)
-            )
-
-        return out
-
-    # if model_management.is_nvidia(): #pytorch 2.3 and up seem to have this issue.
-        SDP_BATCH_LIMIT = 2**15
-    # else:
-    #     #TODO: other GPUs ?
-    #     SDP_BATCH_LIMIT = 2**31
-
-
-# ---------------------- Feed Forward Network -----------------------
-
 
 class FeedForward(nn.Module):
     """
@@ -574,7 +351,8 @@ class Attention(nn.Module):
                 k = apply_rotary_pos_emb(k, rope_emb ) 
         return q, k, v
 
-    def cal_attn(self, q, k, v, mask=None):
+    def cal_attn(self, q, k, v, mask=None, cross_attn = False):
+        patch_compiler = offload.shared_state.get("patch_compiler", False)
         if use_TE:
             if self.backend == "transformer_engine":
                 seq_dim = self.qkv_format.index("s")
@@ -589,20 +367,48 @@ class Attention(nn.Module):
             else:
                 raise ValueError(f"Backend {self.backend} not found")
         else:
-
-            attention_mode = offload.shared_state.get("attention_mode", "basic")
-
+            attention_mode = offload.shared_state.get("attention_mode", "sdpa")
+            apply_patch = True
             if attention_mode == "sage":
-                attention_func = attention_basic
+                # b h k d
+                if patch_compiler:
+                    batch_no = q.shape[0]
+                    max_seqlen_q = q.shape[2]
+                    max_seqlen_k = k.shape[2]
+                    cu_seqlens_q = torch.tensor([0, max_seqlen_q], dtype= torch.int32, device="cuda")
+                    cu_seqlens_k = torch.tensor([0, max_seqlen_k], dtype= torch.int32, device="cuda")
+                    q, k, v = map(
+                        lambda x: x.transpose(1, 2).view(x.shape[0] * x.shape[2], x.shape[1], x.shape[-1] ),
+                        (q, k, v),
+                    )
+                    out= sageattn_varlen(q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)
+                    out = out.view(
+                        batch_no, max_seqlen_q, out.shape[-2], out.shape[-1]
+                    ).transpose(1, 2)  
+                    apply_patch  = True
+                else:
+                    out = sageattn(q, k, v, attn_mask=mask, is_causal=False) # can't use this version of sage attension with compilation as it produces garbage 
             elif attention_mode == "xformers":
-                attention_func = attention_xformers
+                # b h k d -> b k h d
+                q, k, v = map(
+                    lambda t: t.transpose(1, 2),
+                    (q, k, v),
+                )
+                out = memory_efficient_attention(q, k, v, attn_bias= mask)
+                # b k h d -> b h k d 
+                out = out.transpose(1, 2)
+                apply_patch  = cross_attn
+            elif attention_mode =="sdpa":
+                out = torch.nn.functional.scaled_dot_product_attention( q, k , v, attn_mask=mask, is_causal=False)
+                apply_patch  = cross_attn
             else:
-                attention_func = attention_basic
-         
-            out = attention_func(q, k, v, self.heads, skip_reshape=True, mask=mask, skip_output_reshape=True)
-
+                raise Exception("attention type not supported")
+        
             out = rearrange(out, " b n s c -> s b (n c)")
-        return self.to_out(out)    
+            if  patch_compiler and apply_patch: # patch for pytorch 2.50 / 2.51 compilation bug, many thanks to ... Deep Beep Meep,  wait !, is that me ?
+                out = out +  0 # out += 0 won't work as it doesn't seem to elicit the creation of a brand new tensor 
+            out = self.to_out(out) 
+        return out
 
     def forward(
         self,
@@ -617,5 +423,7 @@ class Attention(nn.Module):
             x (Tensor): The query tensor of shape [B, Mq, K]
             context (Optional[Tensor]): The key tensor of shape [B, Mk, K] or use x as context [self attention] if None
         """
+        
+        cross_attn = kwargs["block_type"] in  ["cross_attn", "ca"] if "block_type" in kwargs else False 
         q, k, v = self.cal_qkv(x, context, mask, rope_emb=rope_emb, **kwargs)
-        return self.cal_attn(q, k, v, mask)
+        return self.cal_attn(q, k, v, mask, cross_attn)

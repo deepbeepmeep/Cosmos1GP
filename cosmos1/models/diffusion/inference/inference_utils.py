@@ -293,12 +293,11 @@ def load_model_by_config(
 def load_network_model(model: DiffusionT2WModel, ckpt_path: str):
     with skip_init_linear(),  init_empty_weights():
         model.set_up_model()
-    # net_state_dict = torch.load("checkpoints/Cosmos-1.0-Diffusion-14B-Video2World/model.pt", map_location="cpu", weights_only=True)
+    # net_state_dict = torch.load("model.pt", map_location="cpu", weights_only=True)
     # log.debug(non_strict_load_model(model.model, net_state_dict))
-    # offload.save_model(model.model, "cosmo1_14B_video2world.safetensors")
-    # offload.save_model(model.model, "cosmo1_14B_video2world_quanto_int8.safetensors", do_quantize = True)
 
-
+    # offload.save_model(model.model, "cosmo1_7B_video2world.safetensors")
+    # offload.save_model(model.model, "cosmo1_7B_video2world_quanto_int8.safetensors", do_quantize = True)
 
     offload.load_model_data(model.model, ckpt_path)
 

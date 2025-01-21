@@ -14,7 +14,13 @@ Details of the platform is described in the [Cosmos paper](https://research.nvid
 
 
 # Cosmos1 (Text2World and Image2World): GPU Poor version by **DeepBeepMeep**
-01/15/2024: Version 1.0 First release
+*01/15/2024: Version 1.1*
+- Added support for sdpa attention (this simplifies greatly installation of the application on windows)
+- Added support for negative prompts
+- Added support for 7B models
+- Added workarounds to pytorch compilation to make it run with xformers, sage and sdpa attentions: a full generation with a 14B model with compiled sage mode takes now only 17 minutes at 1280x720 (max VRAM 15.2 GB) !
+
+*01/15/2024: Version 1.0 First release*
 
 https://github.com/user-attachments/assets/37db0c39-1fa2-4dd6-84c9-3493fd0c3eed
 
@@ -24,7 +30,7 @@ https://github.com/user-attachments/assets/8da7d14d-28b5-4902-97e4-4a0171b6725f
 
 
 
-This version offers the following improvements :
+Cosmos1GP offers the following improvements over the original NVidia Cosmos1:
 - Reduced greatly the RAM requirements and VRAM requirements
 - Much faster on low end configs thanks to compilation and fast loading / unloading
 - Support for 8 bits quantization ( int8 quantized models provided)
@@ -57,26 +63,34 @@ cd Cosmos1GP
 # 2. Install Python 3.10.9
 conda create -n Cosmos1GP python==3.10.9 
 
-# 3. Install pytorch 2.5.0
-pip install torch==2.5.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/cu124
+# 3. Install pytorch 2.5.1
+pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/cu124
 
 # 4. Install pip dependencies
 pip install -r requirements.txt
 
-# 5. Optional: Sage attention support (30% faster, easy to install on Linux but much harder on Windows)
+# 5.1 Optional: Xformers attention support 
+# a - Linux / WSL
+pip install xformers==0.0.29.post1
+
+# b - Windows
+pip install https://download.pytorch.org/whl/cu124/xformers-0.0.29.post1-cp310-cp310-win_amd64.whl
+
+# 5.2 Optional: Sage attention support (30% faster, easy to install on Linux but much harder on Windows)
 pip install sageattention==1.0.6 
 
 # 6. Optional: Transformer Engine support (builtin compilation and different memory management may be consequently more efficient)
+pip install transformer_engine
 pip install transformer_engine_torch
 pip install flash-attn==2.6.0.post1
 ```
 
 Step 6 may be quite hard to complete as it requires to compile both the *transformer engine* and *flash attention*.\
-If you have trouble compiling either please check the following on Linux / Windows WSL:\
+If you have trouble compiling please make sure of the following (Linux / Windows WSL):\
 **1) Cudnn 9.6.0 is installed:**
 https://developer.download.nvidia.com/compute/cudnn/9.6.0/local_installers/cudnn-local-repo-ubuntu2204-9.6.0_1.0-1_amd64.deb
 
-**2) The Paths to the Cuda Libraries and the C++ compilers are properly set**
+**2) The Paths to the Cuda Libraries and the C++ compilers are properly set (here below for Linux)**
 ```
 export CUDA_HOME=/usr/local/cuda
 export CC=/usr/bin/gcc
@@ -91,8 +105,8 @@ sudo cp /usr/include/cudnn* /usr/local/cuda/include/
 Be aware that compiling *flash attention* may take a couple of hours.
 
 Please note:
--  *Sage attention* is also quite complex to install on Windows but is a bit faster than the xformers attention. Moreover Sage Attention seems to have some compatibility issues with *Pytorch Compilation*.
--  *Pytorch Compilation* will work on Windows only if you manage to install Triton. It is quite a complex process I will try to provide a script in the future.
+-  *Sage attention* is also quite complex to install on Windows but is a 30% faster than the xformers attention at a cost a small degradation of image quality. 
+-  *Pytorch Compilation* will work on Windows (without WSL) if you manage to install Triton. It is quite a complex process. Here is a link that explains how to do it : https://github.com/woct0rdho/triton-windows . For simpler installations it is recommended to use Windows with WSL.
 
 
 ### Run a Gradio Server on port 7860 (by default)
@@ -106,7 +120,7 @@ To run the image or video 2 world (video) model:
 python3 gradio_server_v2w.py
 ```
 
-You will have the possibility to configure a RAM / VRAM profile (see section below) by expanding the section *Video Engine Configuration* in the Web Interface.\
+You will have the possibility to choose the model you need and configure a RAM / VRAM profile (see section below) by expanding the section *Video Engine Configuration* in the Web Interface.\
 
 If by mistake you have chosen a configuration not supported by your system, you can force a profile while loading the app with the safe profile 5:  
 ```bash
@@ -119,6 +133,15 @@ python3 gradio_server_v2w.py --use-te
 ```
 
 Try to use prompts that are a few hundreds characters long as short prompts do not seem to produce great videos. You may get some assistance from a large language model. It is also unclear yet if rendering resolutions other than 1280x720 can give good results. 
+
+Thanks to a highly optimized offloading optimizations provided by the mmgp module, the size of the model (7B or 14B) you chose will have little impact on the VRAM requirements.
+
+However, as general rule of thumb, 7B models take two times less time than 14B models and quantized models are 15% faster.
+Sample generation times on a RTX 4090 for 5s 25 steps 1280x720 with sage attention buy no Pytorch compile:  
+- 14B non quantized: 23 minutes
+- 14B quantized: 20 minutes
+- 7B non quantized: 12 minutes
+- 7B quantized: 10 minutes
 
 Please note that currently only the *xformers* attention works with the Video2World model, although it is not clear if it follows properly the prompt. It is why I recommend to use the Transformer Engine if you can.
 
@@ -140,7 +163,10 @@ Unfortunately, as the minimum of images generated is 121 frames (5s) this requir
 
 2) You may try to turn on compilation with Xformers in the Video Engine configuration menu, usually compilation consumes less VRAM
 
-3) The original Nvidia Transformer Engine is more VRAM efficient than xformers. So you need to install it first (see instructions above) and run the application with the ‘—use-te’ parameter
+3) The original Nvidia Transformer Engine is more VRAM efficient than xformers. In order to use it you will need to install it first (see instructions above) and run the application with the ‘—use-te’ parameter
+
+**Known issue** :
+- Transformer Engine may be slow on some systems when ran on unquantized models (issue with original repo)
 
 ### Command line parameters for the Gradio Server
 --use-te : run the server using the Transformer Engine (see installation abover)
@@ -164,5 +190,5 @@ One of the best inpainting / outpainting tools based on Flux that can run with l
 
 ### Many thanks to:
 - NVidia for this great models family
-- The ComfyUI team for providing the bits of code to run Cosmos1 without the Transformer Engine
+- The ComfyUI team for providing a replacement code for the 'apply_rotary_embeddings' that can run without the Transformer Engine
 - Hugginface for their tools (optimim-quanto, accelerate, safetensors, transformers, ...) that were helpful to build the mmgp module

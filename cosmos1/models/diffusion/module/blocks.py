@@ -299,6 +299,7 @@ class VideoAttn(nn.Module):
         context: Optional[torch.Tensor] = None,
         crossattn_mask: Optional[torch.Tensor] = None,
         rope_emb_L_1_1_D: Optional[torch.Tensor] = None,
+        **kwargs
     ) -> torch.Tensor:
         """
         Forward pass for video attention.
@@ -324,6 +325,7 @@ class VideoAttn(nn.Module):
             context_M_B_D,
             crossattn_mask,
             rope_emb=rope_emb_L_1_1_D,
+            **kwargs,
         )
         x_T_H_W_B_D = rearrange(x_THW_B_D, "(t h w) b d -> t h w b d", h=H, w=W)
         return x_T_H_W_B_D
@@ -450,7 +452,7 @@ class DITBuildingBlock(nn.Module):
             x = x + gate_1_1_1_B_D * self.block(
                 adaln_norm_state(self.norm_state, x, scale_1_1_1_B_D, shift_1_1_1_B_D),
                 context=None,
-                rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                rope_emb_L_1_1_D=rope_emb_L_1_1_D, block_type = self.block_type,
             )
         elif self.block_type in ["cross_attn", "ca"]:
             x = x + gate_1_1_1_B_D * self.block(
@@ -458,6 +460,7 @@ class DITBuildingBlock(nn.Module):
                 context=crossattn_emb,
                 crossattn_mask=crossattn_mask,
                 rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                block_type = self.block_type,                
             )
         else:
             raise ValueError(f"Unknown block type: {self.block_type}")

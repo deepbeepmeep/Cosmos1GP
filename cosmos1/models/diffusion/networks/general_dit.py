@@ -166,7 +166,6 @@ class GeneralDIT(nn.Module):
                 use_adaln_lora=use_adaln_lora,
                 adaln_lora_dim=adaln_lora_dim,
             )
-
         self.build_decode_head()
         if self.affline_emb_norm:
             log.debug("Building affine embedding normalization layer")

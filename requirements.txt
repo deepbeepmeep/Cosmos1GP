@@ -31,11 +31,11 @@ transformers==4.45.0
 einops
 attrs
 pynvml
-mmgp==3.1.0
+mmgp==3.1.2
 ninja
-xformers==0.0.28.post2
 opencv-python
 protobuf
 gradio
-#transformer_engine_torch
+#xformers #==0.0.28.post2
 #flash-attn==2.6.0.post1
+#transformer_engine_torch
