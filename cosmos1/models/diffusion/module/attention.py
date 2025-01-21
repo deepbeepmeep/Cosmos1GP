@@ -33,6 +33,7 @@ else:
         from sageattention import sageattn, sageattn_varlen
     except:
         sageattn = None
+        sageattn_varlen = None
         pass
 
     try:
