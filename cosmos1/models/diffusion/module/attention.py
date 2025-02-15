@@ -28,6 +28,8 @@ from torch.utils.checkpoint import checkpoint
 
 if use_TE:
     from transformer_engine.pytorch.attention import DotProductAttention, apply_rotary_pos_emb
+    def get_attention_modes():
+        return []
 else:
     try:
         from sageattention import sageattn, sageattn_varlen
@@ -45,6 +47,17 @@ else:
         from xformers.ops import memory_efficient_attention
     except:
         pass
+
+    def get_attention_modes():
+        ret = ["sdpa"]
+        if flash_attn_func != None:
+            ret.append("flash")
+        if memory_efficient_attention != None:
+            ret.append("xformers")
+        if sageattn_varlen != None:
+            ret.append("sage")
+        return ret
+
 
     def rms_norm(x, weight=None, eps=1e-6):
         return torch.nn.functional.rms_norm(x, weight.shape, weight=weight, eps=eps)
@@ -354,6 +367,8 @@ class Attention(nn.Module):
 
     def cal_attn(self, q, k, v, mask=None, cross_attn = False):
         patch_compiler = offload.shared_state.get("patch_compiler", False)
+        if "abort" in offload.shared_state:
+            raise Exception("abort")
         if use_TE:
             if self.backend == "transformer_engine":
                 seq_dim = self.qkv_format.index("s")

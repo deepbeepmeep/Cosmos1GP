@@ -14,6 +14,10 @@ Details of the platform is described in the [Cosmos paper](https://research.nvid
 
 
 # Cosmos1 (Text2World and Image2World): GPU Poor version by **DeepBeepMeep**
+*01/21/2024: Version 1.2*
+- Added Teacache option for up to two times faster generations
+- Auto detect is attention mode chosen is not installed
+- Easier to abort current generation
 *01/21/2024: Version 1.1*
 - Added support for sdpa attention (this simplifies greatly installation of the application on windows)
 - Added support for negative prompts

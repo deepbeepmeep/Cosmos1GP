@@ -20,6 +20,7 @@ A general implementation of adaln-modulated VIT-like~(DiT) transformer for video
 from typing import List, Optional, Tuple
 
 import torch
+import numpy as np
 from einops import rearrange
 from torch import nn
 from torchvision import transforms
@@ -35,6 +36,7 @@ from cosmos1.models.diffusion.module.blocks import (
 )
 from cosmos1.models.diffusion.module.position_embedding import LearnablePosEmbAxis, VideoRopePosition3DEmb
 from cosmos1.utils import log
+from cosmos1.models.diffusion.module.blocks import adaln_norm_state 
 
 
 class GeneralDIT(nn.Module):
@@ -489,31 +491,167 @@ class GeneralDIT(nn.Module):
             assert (
                 x.shape == extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D.shape
             ), f"{x.shape} != {extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D.shape} {original_shape}"
+        
+        if self.enable_teacache:
+            inp = x #.clone()
+            if self.blocks["block0"].blocks[0].use_adaln_lora:
+                shift_B_D, scale_B_D, gate_B_D = (self.blocks["block0"].blocks[0].adaLN_modulation(affline_emb_B_D) + adaln_lora_B_3D).chunk(
+                    self.blocks["block0"].blocks[0].n_adaln_chunks, dim=1
+                )
+            else:
+                shift_B_D, scale_B_D, gate_B_D = self.blocks["block0"].blocks[0].adaLN_modulation(affline_emb_B_D).chunk(self.blocks["block0"].blocks[0].n_adaln_chunks, dim=1)
 
-        for _, block in self.blocks.items():
-            assert (
-                self.blocks["block0"].x_format == block.x_format
-            ), f"First block has x_format {self.blocks[0].x_format}, got {block.x_format}"
-
-            x = block(
-                x,
-                affline_emb_B_D,
-                crossattn_emb,
-                crossattn_mask,
-                rope_emb_L_1_1_D=rope_emb_L_1_1_D,
-                adaln_lora_B_3D=adaln_lora_B_3D,
-                extra_per_block_pos_emb=extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D,
+            shift_1_1_1_B_D, scale_1_1_1_B_D, _ = (
+                shift_B_D.unsqueeze(0).unsqueeze(0).unsqueeze(0),
+                scale_B_D.unsqueeze(0).unsqueeze(0).unsqueeze(0),
+                gate_B_D.unsqueeze(0).unsqueeze(0).unsqueeze(0),
             )
 
-        x_B_T_H_W_D = rearrange(x, "T H W B D -> B T H W D")
+            modulated_inp = adaln_norm_state(self.blocks["block0"].blocks[0].norm_state, inp, scale_1_1_1_B_D, shift_1_1_1_B_D)
 
-        x_B_D_T_H_W = self.decoder_head(
-            x_B_T_H_W_D=x_B_T_H_W_D,
-            emb_B_D=affline_emb_B_D,
-            crossattn_emb=None,
-            origin_shape=original_shape,
-            crossattn_mask=None,
-            adaln_lora_B_3D=adaln_lora_B_3D,
-        )
+            if self.cnt%2 == 0:
+                self.is_even = True # even->condition odd->uncondition
+                if self.cnt == 0:
+                    self.skipped_even = 0
+                if self.cnt == 0 or self.cnt == self.num_steps:
+                    should_calc_even = True
+                    self.accumulated_rel_l1_distance_even = 0  
+                else: 
+                    coefficients = [2.71156237e+02, -9.19775607e+01, 2.24437250e+00, 2.08355751e+00, 1.41776330e-01]
+                    rescale_func = np.poly1d(coefficients)
+                    self.accumulated_rel_l1_distance_even += rescale_func(((modulated_inp-self.previous_modulated_input_even).abs().mean() / self.previous_modulated_input_even.abs().mean()).cpu().item())
+                    distance = self.accumulated_rel_l1_distance_even
+                    if self.accumulated_rel_l1_distance_even < self.rel_l1_thresh:
+                        should_calc_even = False
+                    else:
+                        should_calc_even = True
+                        self.accumulated_rel_l1_distance_even = 0
+                    if not should_calc_even:
+                        self.skipped_even += 1
+                    print(f"accum even: {distance} / {self.rel_l1_thresh}, skip={not should_calc_even}, skipped already {self.skipped_even} / {(self.cnt+2)/2}")
+                self.previous_modulated_input_even = modulated_inp#.clone()
+                self.cnt += 1
+                if self.cnt == self.num_steps+2:
+                    self.cnt = 0
 
-        return x_B_D_T_H_W
+            else:
+                self.is_even = False
+                if self.cnt == 1:
+                    self.skipped_odd = 0
+                if self.cnt == 1 or self.cnt == self.num_steps+1:
+                    should_calc_odd = True
+                    self.accumulated_rel_l1_distance_odd = 0  
+                else: 
+                    coefficients = [2.71156237e+02, -9.19775607e+01, 2.24437250e+00, 2.08355751e+00, 1.41776330e-01]
+                    rescale_func = np.poly1d(coefficients)
+                    self.accumulated_rel_l1_distance_odd += rescale_func(((modulated_inp-self.previous_modulated_input_odd).abs().mean() / self.previous_modulated_input_odd.abs().mean()).cpu().item())
+                    distance = self.accumulated_rel_l1_distance_odd
+                    if self.accumulated_rel_l1_distance_odd < self.rel_l1_thresh:
+                        should_calc_odd = False
+                    else:
+                        should_calc_odd = True
+                        self.accumulated_rel_l1_distance_odd = 0
+                    if not should_calc_odd:
+                        self.skipped_odd += 1
+                    print(f"accum odd: {distance} / {self.rel_l1_thresh}, skip={not should_calc_odd}, skipped already {self.skipped_odd} / {(self.cnt+1)/2}")
+
+                self.previous_modulated_input_odd = modulated_inp#.clone()
+                self.cnt += 1
+                if self.cnt == self.num_steps+2:
+                    self.cnt = 0
+
+                    
+        if self.enable_teacache:
+
+            if self.is_even:
+                if not should_calc_even:
+                    x += self.previous_residual_even
+                else:
+                    ori_x = x#.clone() # (t, h, w, b, d) = (16, 44, 80, 1, 4096)
+                    for _, block in self.blocks.items():
+                        assert (
+                            self.blocks["block0"].x_format == block.x_format
+                        ), f"First block has x_format {self.blocks[0].x_format}, got {block.x_format}"
+
+                        x = block(
+                            x,
+                            affline_emb_B_D,
+                            crossattn_emb,
+                            crossattn_mask,
+                            rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                            adaln_lora_B_3D=adaln_lora_B_3D,
+                            extra_per_block_pos_emb=extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D,
+                        ) # x(t, h, w, b, d) = (16, 44, 80, 1, 4096)
+                    self.previous_residual_even = x - ori_x
+                    del ori_x
+                x_B_T_H_W_D = rearrange(x, "T H W B D -> B T H W D") # (b, t, h, w, d) = (1, 16, 40, 80, 4096)
+                x_B_D_T_H_W = self.decoder_head(
+                    x_B_T_H_W_D=x_B_T_H_W_D,
+                    emb_B_D=affline_emb_B_D,
+                    crossattn_emb=None,
+                    origin_shape=original_shape,
+                    crossattn_mask=None,
+                    adaln_lora_B_3D=adaln_lora_B_3D,
+                ) # (b, d, t, h, w) = (1, 16, 16, 88, 160)
+                return x_B_D_T_H_W
+                
+            else: # odd
+                if not should_calc_odd:
+                    x += self.previous_residual_odd
+                else:
+                    ori_x = x#.clone()
+                    for _, block in self.blocks.items():
+                        assert (
+                            self.blocks["block0"].x_format == block.x_format
+                        ), f"First block has x_format {self.blocks[0].x_format}, got {block.x_format}"
+
+                        x = block(
+                            x,
+                            affline_emb_B_D,
+                            crossattn_emb,
+                            crossattn_mask,
+                            rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                            adaln_lora_B_3D=adaln_lora_B_3D,
+                            extra_per_block_pos_emb=extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D,
+                        )
+                    self.previous_residual_odd = x - ori_x
+                    del ori_x
+                x_B_T_H_W_D = rearrange(x, "T H W B D -> B T H W D")
+                x_B_D_T_H_W = self.decoder_head(
+                    x_B_T_H_W_D=x_B_T_H_W_D,
+                    emb_B_D=affline_emb_B_D,
+                    crossattn_emb=None,
+                    origin_shape=original_shape,
+                    crossattn_mask=None,
+                    adaln_lora_B_3D=adaln_lora_B_3D,
+                )
+                return x_B_D_T_H_W
+    
+        else:
+            for _, block in self.blocks.items():
+                assert (
+                    self.blocks["block0"].x_format == block.x_format
+                ), f"First block has x_format {self.blocks[0].x_format}, got {block.x_format}"
+
+                x = block(
+                    x,
+                    affline_emb_B_D,
+                    crossattn_emb,
+                    crossattn_mask,
+                    rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                    adaln_lora_B_3D=adaln_lora_B_3D,
+                    extra_per_block_pos_emb=extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D,
+                )
+            x_B_T_H_W_D = rearrange(x, "T H W B D -> B T H W D")
+
+            x_B_D_T_H_W = self.decoder_head(
+                x_B_T_H_W_D=x_B_T_H_W_D,
+                emb_B_D=affline_emb_B_D,
+                crossattn_emb=None,
+                origin_shape=original_shape,
+                crossattn_mask=None,
+                adaln_lora_B_3D=adaln_lora_B_3D,
+            )
+
+            return x_B_D_T_H_W
+        

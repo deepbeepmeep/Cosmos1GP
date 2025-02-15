@@ -12,6 +12,8 @@ import json
 import argparse
 import os
 import sys
+import torch
+import gc
 from mmgp import offload, profile_type
 use_te=  "--use-te" in sys.argv[1:]
 if use_te:
@@ -129,8 +131,8 @@ args = parse_arguments()
 cfg = args
 
 misc.set_random_seed(cfg.seed)
-video2world = args.video2world
-video2world = True
+video2world = args.video2world or "v2w" in __file__
+#video2world = True
 if video2world:
     inference_type = "video2world"
 else:
@@ -347,12 +349,15 @@ def build_callback(state, pipe, progress, status, num_inference_steps):
 def abort_generation(state):
     if "in_progress" in state:
         state["abort"] = True
+        offload.shared_state["abort"] = True
         pipeline._interrupt = True
         return gr.Button(interactive=  False)
     else:
         return gr.Button(interactive=  True)
 
 def refresh_gallery(state):
+    if not "file_list" in state:
+        return None 
     file_list = state["file_list"]      
     return file_list
         
@@ -382,7 +387,7 @@ def generate_video(
     # flow_shift,
     embedded_guidance_scale,
     repeat_generation,
-    # tea_cache,
+    tea_cache,
     image_to_continue,
     video_to_continue,
     max_frames,
@@ -396,8 +401,15 @@ def generate_video(
 
     pipeline._interrupt = False
 
+    if not use_te and attention_mode not in get_attention_modes():
+        raise gr.Error(f"You have selected attention mode '{attention_mode}'. However it is not installed on your system. You should either install it or switch to the default 'sdpa' attention.")
+
     if "abort" in state:
         del state["abort"]
+
+    if "abort" in offload.shared_state:
+        del offload.shared_state["abort"] 
+
     state["in_progress"] = True
     state["selected"] = 0
  
@@ -443,6 +455,9 @@ def generate_video(
     else:
         input_image_or_video_path = None
 
+    teacache_hook = pipeline.model.net    
+    teacache_hook.enable_teacache = tea_cache > 0
+    
     start_time = time.time()
     for current_prompt in prompts:
         for _ in range(repeat_generation):
@@ -463,6 +478,20 @@ def generate_video(
             # pipeline.fps = fps
             # pipeline.num_video_frames = num_video_frames
 
+            if tea_cache > 0:
+                teacache_hook.cnt = 0
+                teacache_hook.num_steps = pipeline.num_steps * 2
+                teacache_hook.rel_l1_thresh = tea_cache #cfg.rel_l1_thresh
+                teacache_hook.accumulated_rel_l1_distance_even = 0
+                teacache_hook.accumulated_rel_l1_distance_odd = 0
+                teacache_hook.previous_modulated_input_even = None
+                teacache_hook.previous_modulated_input_odd = None
+                teacache_hook.previous_residual_even = None
+                teacache_hook.previous_residual_odd = None
+
+            torch.cuda.empty_cache()
+            gc.collect()
+
             # if True:
             try:
                 if video2world:
@@ -476,12 +505,12 @@ def generate_video(
                      generated_output = None
                 else:
                     raise
-
+            offload
             from datetime import datetime
             
             if generated_output == None:
                 end_time = time.time()
-                yield f"Abortion Succesful. Total Generation Time: {end_time-start_time:.1f}s"
+                yield f"Video Generation was aborted. Total Generation Time: {end_time-start_time:.1f}s"
             else:
                 video, prompt = generated_output
 
@@ -661,15 +690,27 @@ def create_demo():
                         embedded_guidance_scale = gr.Slider(1.0, 20.0, value=7.0, step=0.5, label="Embedded Guidance Scale")
 
                         repeat_generation = gr.Slider(1, 25.0, value=1.0, step=1, label="Number of Generated Video per prompt") 
-                        # tea_cache_setting = gr.Dropdown(
-                        #     choices=[
-                        #         ("Disabled", 0),
-                        #         ("Fast (x1.6 speed up)", 0.1), 
-                        #         ("Faster (x2.1 speed up)", 0.15), 
-                        #     ],
-                        #     value=0,
-                        #     label="Tea Cache acceleration (the faster the acceleration the higher the degradation of the quality of the video)"
-                        # )
+                        if video2world or True:
+                            tea_cache_setting = gr.Dropdown(
+                                choices=[
+                                    ("Disabled", 0),
+                                    ("Fast (x1.3 speed up)", 0.3), 
+                                    ("Faster (x2.1 speed up)", 0.4), 
+                                ],
+                                value=0,
+                                label="Tea Cache acceleration (the faster the acceleration the higher the degradation of the quality of the video)"
+                            )
+                        else:
+                            tea_cache_setting = gr.Dropdown(
+                                choices=[
+                                    ("Disabled", 0),
+                                    ("Fast (x1.3 speed up)", 0.1), 
+                                    ("Faster (x2.1 speed up)", 0.3), 
+                                ],
+                                value=0,
+                                label="Tea Cache acceleration (the faster the acceleration the higher the degradation of the quality of the video)"
+                            )
+
 
                 show_advanced.change(fn=lambda x: gr.Row(visible=x), inputs=[show_advanced], outputs=[advanced_row])
             
@@ -700,7 +741,7 @@ def create_demo():
                 # flow_shift,
                 embedded_guidance_scale,
                 repeat_generation,
-                # tea_cache_setting,
+                tea_cache_setting,
                 image_to_continue,
                 video_to_continue,
                 max_frames,
@@ -725,9 +766,8 @@ if __name__ == "__main__":
         server_port = int(os.getenv("SERVER_PORT", "7860"))
 
     server_name = args.server_name
-    server_name = "localhost"
     if len(server_name) == 0:
-        server_name = os.getenv("SERVER_NAME", "0.0.0.0")
+        server_name = os.getenv("SERVER_NAME", "localhost")
 
         
     demo = create_demo()
